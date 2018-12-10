@@ -6,6 +6,8 @@ library(gplots)
 library(RColorBrewer)
 library(diptest)
 
+########### import and process data
+
 mydir <- "/mnt/gtklab01/ahjung/bivalent-tmp/GSE75748/"
 
 bulk_cell <- read.csv(paste0(mydir,"GSE75748_bulk_cell_type_ec.csv"),row.names=1)
@@ -13,47 +15,33 @@ bulk_time <- read.csv(paste0(mydir,"GSE75748_bulk_time_course_ec.csv"),row.names
 sc_cell <- read.csv(paste0(mydir,"GSE75748_sc_cell_type_ec.csv"),row.names=1)
 sc_time <- read.csv(paste0(mydir,"GSE75748_sc_time_course_ec.csv"),row.names=1)
 
-sc_cell_coldata <- data.frame("cell"=strsplit(colnames(sc_cell)[1],"_|[.]")[[1]][1],
-                              "exp"=strsplit(colnames(sc_cell)[1],"_|[.]")[[1]][2],
-                              "idx"=strsplit(colnames(sc_cell)[1],"_|[.]")[[1]][3])
+extract_coldata_sub <- function(df,i){
+df_split <- strsplit(colnames(df)[i],"_|[.]")[[1]]
 
-invisible(sapply(2:ncol(sc_cell),
-       function(i) sc_cell_coldata <<- rbind(sc_cell_coldata,
-                                             data.frame("cell"=strsplit(colnames(sc_cell)[i],"_|[.]")[[1]][1],
-                                                        "exp"=strsplit(colnames(sc_cell)[i],"_|[.]")[[1]][2],
-                                                        "idx"=strsplit(colnames(sc_cell)[i],"_|[.]")[[1]][3]))))
+coldata <- data.frame("cell"=df_split[1],
+                              "exp"=df_split[2],
+                      "idx"=df_split[3])
+return(coldata)}
 
-sc_time_coldata <- data.frame("cell"=strsplit(colnames(sc_time)[1],"_|[.]")[[1]][1],
-                              "exp"=strsplit(colnames(sc_time)[1],"_|[.]")[[1]][2],
-                              "idx"=strsplit(colnames(sc_time)[1],"_|[.]")[[1]][3])
+extract_coldata <- function(df) {
 
-invisible(sapply(2:ncol(sc_time),
-       function(i) sc_time_coldata <<- rbind(sc_time_coldata,
-                                             data.frame("cell"=strsplit(colnames(sc_time)[i],"_|[.]")[[1]][1],
-                                                        "exp"=strsplit(colnames(sc_time)[i],"_|[.]")[[1]][2],
-                                                        "idx"=strsplit(colnames(sc_time)[i],"_|[.]")[[1]][3]))))
+coldata <- extract_coldata_sub(df,1)
+invisible(sapply(2:ncol(df),
+       function(i) coldata <<- rbind(coldata,
+                                     extract_coldata_sub(df,i))))
+return(coldata)}
 
-bulk_time_coldata <- data.frame("cell"=strsplit(colnames(bulk_time)[1],"_")[[1]][1],
-                              "exp"=strsplit(colnames(bulk_time)[1],"_")[[1]][2],
-                              "rep"=strsplit(colnames(bulk_time)[1],"_")[[1]][3])
-
-invisible(sapply(2:ncol(bulk_time),
-       function(i) bulk_time_coldata <<- rbind(bulk_time_coldata,
-                                             data.frame("cell"=strsplit(colnames(bulk_time)[i],"_")[[1]][1],
-                                                        "exp"=strsplit(colnames(bulk_time)[i],"_")[[1]][2],
-                                                        "rep"=strsplit(colnames(bulk_time)[i],"_")[[1]][3]))))
-
+sc_cell_coldata <- extract_coldata(sc_cell)
+sc_time_coldata <- extract_coldata(sc_time)
+bulk_time_coldata <- extract_coldata(bulk_time)
 bulk_cell_coldata <- data.frame("cell"=strsplit(colnames(bulk_cell)[1],"_")[[1]][1],
                               "rep"=strsplit(colnames(bulk_cell)[1],"_")[[1]][2])
-
-
 invisible(sapply(2:ncol(bulk_cell),
        function(i) bulk_cell_coldata <<- rbind(bulk_cell_coldata,
                                                data.frame("cell"=strsplit(colnames(bulk_cell)[i],"_")[[1]][1],
                                                           "rep"=strsplit(colnames(bulk_cell)[i],"_")[[1]][2]))))
 
-hist(log(as.numeric(sc_cell[1,sc_cell_coldata$cell == "H1"])+1))
-
+#hist(log(as.numeric(sc_cell[1,sc_cell_coldata$cell == "H1"])+1))
 
 get_scexp <- function(sc_cell,sc_cell_coldata,celltype,mark,markid) {
 
@@ -66,7 +54,7 @@ get_scexp <- function(sc_cell,sc_cell_coldata,celltype,mark,markid) {
     
     cat("equal/below 2 is", length(x[x=<2]), "above 2 is", length(x[x>2]),"\n")
 
-    x2 <- data.frame("exp"=x[x>2],
+    x2 <- data.frame("exp"=x[x>2], ######### filter any counts below 2
                      "class"=rep(markid,length(x[x>2])))
 
 return(x2) }
@@ -83,12 +71,9 @@ get_bulkexp <- function(celltype,mark,markid) {
 
 x2 <- data.frame("exp"=x[x>2], "class"=rep(markid,length(x[x>2])))
 
-return(x2)
+return(x2)}
 
-
-}
-
-load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData")
+load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData") ### load histone mark data
 
 hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K27me3, hESC_bivalent))]
 
