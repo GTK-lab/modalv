@@ -10,10 +10,10 @@ library(diptest)
 
 mydir <- "/mnt/gtklab01/ahjung/bivalent-tmp/GSE75748/"
 
-bulk_cell <- read.csv(paste0(mydir,"GSE75748_bulk_cell_type_ec.csv"),row.names=1)
-bulk_time <- read.csv(paste0(mydir,"GSE75748_bulk_time_course_ec.csv"),row.names=1)
-sc_cell <- read.csv(paste0(mydir,"GSE75748_sc_cell_type_ec.csv"),row.names=1)
-sc_time <- read.csv(paste0(mydir,"GSE75748_sc_time_course_ec.csv"),row.names=1)
+## bulk_cell <- read.csv(paste0(mydir,"GSE75748_bulk_cell_type_ec.csv"),row.names=1)
+## bulk_time <- read.csv(paste0(mydir,"GSE75748_bulk_time_course_ec.csv"),row.names=1)
+## sc_cell <- read.csv(paste0(mydir,"GSE75748_sc_cell_type_ec.csv"),row.names=1)
+## sc_time <- read.csv(paste0(mydir,"GSE75748_sc_time_course_ec.csv"),row.names=1)
 
 extract_coldata_sub <- function(df,i){
 df_split <- strsplit(colnames(df)[i],"_|[.]")[[1]]
@@ -31,15 +31,15 @@ invisible(sapply(2:ncol(df),
                                      extract_coldata_sub(df,i))))
 return(coldata)}
 
-sc_cell_coldata <- extract_coldata(sc_cell)
-sc_time_coldata <- extract_coldata(sc_time)
-bulk_time_coldata <- extract_coldata(bulk_time)
-bulk_cell_coldata <- data.frame("cell"=strsplit(colnames(bulk_cell)[1],"_")[[1]][1],
-                              "rep"=strsplit(colnames(bulk_cell)[1],"_")[[1]][2])
-invisible(sapply(2:ncol(bulk_cell),
-       function(i) bulk_cell_coldata <<- rbind(bulk_cell_coldata,
-                                               data.frame("cell"=strsplit(colnames(bulk_cell)[i],"_")[[1]][1],
-                                                          "rep"=strsplit(colnames(bulk_cell)[i],"_")[[1]][2]))))
+## sc_cell_coldata <- extract_coldata(sc_cell)
+## sc_time_coldata <- extract_coldata(sc_time)
+## bulk_time_coldata <- extract_coldata(bulk_time)
+## bulk_cell_coldata <- data.frame("cell"=strsplit(colnames(bulk_cell)[1],"_")[[1]][1],
+##                               "rep"=strsplit(colnames(bulk_cell)[1],"_")[[1]][2])
+## invisible(sapply(2:ncol(bulk_cell),
+##        function(i) bulk_cell_coldata <<- rbind(bulk_cell_coldata,
+##                                                data.frame("cell"=strsplit(colnames(bulk_cell)[i],"_")[[1]][1],
+##                                                           "rep"=strsplit(colnames(bulk_cell)[i],"_")[[1]][2]))))
 
 #hist(log(as.numeric(sc_cell[1,sc_cell_coldata$cell == "H1"])+1))
 
@@ -52,7 +52,7 @@ get_scexp <- function(sc_cell,sc_cell_coldata,celltype,mark,markid) {
     x <- log(as.numeric(unlist(
         sc_cell[rownames(sc_cell) %in% h1id,sc_cell_coldata$cell %in% celltype]))+1)
     
-    cat("equal/below 2 is", length(x[x=<2]), "above 2 is", length(x[x>2]),"\n")
+    cat("equal/below 2 is", length(x[x<=2]), "above 2 is", length(x[x>2]),"\n")
 
     x2 <- data.frame("exp"=x[x>2], ######### filter any counts below 2
                      "class"=rep(markid,length(x[x>2])))
@@ -73,9 +73,11 @@ x2 <- data.frame("exp"=x[x>2], "class"=rep(markid,length(x[x>2])))
 
 return(x2)}
 
-load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData") ### load histone mark data
+## load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData") ### load histone mark data
 
-hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K27me3, hESC_bivalent))]
+## hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K27me3, hESC_bivalent))]
+
+#=====================================
 
 ## sc_test_tb <- ggplot(allexp, aes(x=exp, col=class)) + geom_density(size=2)+
 ##     ggtitle("sc: TB ; chip: BMP4T")
@@ -133,7 +135,7 @@ hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K
 
 ############# mixed gaussian model
 
-
+#================================
 plot_mix_comps <- function(x, mu, sigma, lam) {
   lam * dnorm(x, mu, sigma)
 }
@@ -213,7 +215,7 @@ plot_time <- function(expvalue,gene,coldatatbl) {
     ncate <- c(0,as.numeric(cumsum(table(coldatatbl))))
     tblnames <- names(table(coldatatbl))
 
-    densitytbl <-         return_density(expvalue[(ncate[1]+1):ncate[1+1]],tblnames[1])
+    densitytbl <- return_density(expvalue[(ncate[1]+1):ncate[1+1]],tblnames[1])
     
     sapply(2:(length(ncate)-1), function(x)
         densitytbl <<- rbind(densitytbl,return_density(expvalue[(ncate[x]+1):ncate[x+1]],tblnames[x])))
@@ -240,7 +242,7 @@ return(data.frame("gene"=gene,
 
 test_bimodal <- function(exp) {
 
-a <- dip.test(log(as.numeric(exp)+1))
+a <- dip.test(as.numeric(exp))
 return(a$p.value)
 
 }
@@ -258,7 +260,7 @@ return(a$p.value)
 
 fit_bimodal <- function(exp,name) {
 
-    tryCatch(mixmdl <- normalmixEM(log(as.numeric(exp)+1), k=2, mu=c(0,6),maxit = 10),error=function(e){NA})
+    tryCatch(mixmdl <- normalmixEM(exp, k=2, mu=c(0,6),maxit = 10),error=function(e){NA})
     
 if (!exists("mixmdl")) {
 df <- data.frame("gene"=NA,
