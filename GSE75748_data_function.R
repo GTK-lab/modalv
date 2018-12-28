@@ -5,6 +5,7 @@ library(dplyr)
 library(gplots)
 library(RColorBrewer)
 library(diptest)
+library(doParallel)
 
 ########### import and process data
 
@@ -282,11 +283,44 @@ return(df)
 }
 
 
-messup <- function(exp,zeromin,zeromax) {
-## The idea is to add a little variance to zeros
-if (((sum(exp==0)/length(exp)*100) > 30) & ((sum(exp==0)/length(exp)*100) < 80)) {
-    exp[sample(which(log(as.numeric(exp)+1)==0),floor(sum(exp==0)*0.5))] <- 0.3 } else { exp } # <- rep(NA,length(exp)) }
-return(exp)
+## messup <- function(exp,zeromin,zeromax) {
+## ## The idea is to add a little variance to zeros
+## if (((sum(exp==0)/length(exp)*100) > 30) & ((sum(exp==0)/length(exp)*100) < 80)) {
+##     exp[sample(which(log(as.numeric(exp)+1)==0),floor(sum(exp==0)*0.5))] <- 0.3 } else { exp } # <- rep(NA,length(exp)) }
+## return(exp)
+## }
+
+messup <- function(sc_cell) {
+    # sc_cell must be in log scale
+    nnoise <- matrix(rnorm(nrow(sc_cell)*ncol(sc_cell),
+                           mean=0, sd=0.1),ncol=ncol(sc_cell))
+    sc_cell_messup <- sc_cell+nnoise
+    return(sc_cell_messup)
 }
 
+fit_bimodal_multi <- function(ncores, logexp_messup) {
 
+cl <- makeCluster(detectCores()-2) # create a cluster with max-2 cores
+registerDoParallel(cl) # register the cluster
+
+res_tpm = foreach(i = 1:nrow(logexp_messup),
+    .combine = "rbind",
+              .packages="mixtools")     %dopar% {
+  # generate a bootstrap sample              
+        fit_bimodal(logexp_messup[i,],rownames(logexp_messup)[i])
+}
+
+stopCluster(cl) # shut down the cluster
+
+return(res_tpm)
+
+}
+
+filter_condition <- function(res_diptest, res_tpm, cond_dip, cond_labmda) {
+condition <- (logtpm_messup_bimodal <= cond_dip) &
+    sapply(1:nrow(res_tpm), function(i) min(res_tpm[i,]$mu1, res_tpm[i,]$mu2) <= 1) &
+        sapply(1:nrow(res_tpm), function(i) max(res_tpm[i,]$mu1, res_tpm[i,]$mu2) > 1)  &
+            sapply(1:nrow(res_tpm), function(i) res_tpm[i,]$lambda1 <= cond_labmda)
+return(condition)
+
+}

@@ -257,6 +257,7 @@ col=hmcol,
 set.seed(1)
 tsne_out <- Rtsne(t(unique(sc_cell[as.character(rownames(sc_cell)[bicondition]),])),pca=FALSE,perplexity=30,theta=0.0)
 
+
 ## tsne_out <- Rtsne(t(unique(sc_cell_original[rownames(sc_cell_original) %in% (rownames(sc_cell)[condition]),])),pca=FALSE,perplexity=30,theta=0.0)
 
 
