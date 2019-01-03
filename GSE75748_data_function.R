@@ -6,6 +6,7 @@ library(gplots)
 library(RColorBrewer)
 library(diptest)
 library(doParallel)
+library(Rtsne)
 
 ########### import and process data
 
@@ -13,8 +14,8 @@ mydir <- "/mnt/gtklab01/ahjung/bivalent-tmp/GSE75748/"
 
 ## bulk_cell <- read.csv(paste0(mydir,"GSE75748_bulk_cell_type_ec.csv"),row.names=1)
 ## bulk_time <- read.csv(paste0(mydir,"GSE75748_bulk_time_course_ec.csv"),row.names=1)
-## sc_cell <- read.csv(paste0(mydir,"GSE75748_sc_cell_type_ec.csv"),row.names=1)
-## sc_time <- read.csv(paste0(mydir,"GSE75748_sc_time_course_ec.csv"),row.names=1)
+sc_cell <- read.csv(paste0(mydir,"GSE75748_sc_cell_type_ec.csv"),row.names=1)
+sc_time <- read.csv(paste0(mydir,"GSE75748_sc_time_course_ec.csv"),row.names=1)
 
 extract_coldata_sub <- function(df,i){
 df_split <- strsplit(colnames(df)[i],"_|[.]")[[1]]
@@ -32,11 +33,11 @@ invisible(sapply(2:ncol(df),
                                      extract_coldata_sub(df,i))))
 return(coldata)}
 
-## sc_cell_coldata <- extract_coldata(sc_cell)
-## sc_time_coldata <- extract_coldata(sc_time)
+sc_cell_coldata <- extract_coldata(sc_cell)
+sc_time_coldata <- extract_coldata(sc_time)
 ## bulk_time_coldata <- extract_coldata(bulk_time)
 ## bulk_cell_coldata <- data.frame("cell"=strsplit(colnames(bulk_cell)[1],"_")[[1]][1],
-##                               "rep"=strsplit(colnames(bulk_cell)[1],"_")[[1]][2])
+                              ## "rep"=strsplit(colnames(bulk_cell)[1],"_")[[1]][2])
 ## invisible(sapply(2:ncol(bulk_cell),
 ##        function(i) bulk_cell_coldata <<- rbind(bulk_cell_coldata,
 ##                                                data.frame("cell"=strsplit(colnames(bulk_cell)[i],"_")[[1]][1],
@@ -74,9 +75,6 @@ x2 <- data.frame("exp"=x[x>2], "class"=rep(markid,length(x[x>2])))
 
 return(x2)}
 
-## load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData") ### load histone mark data
-
-## hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K27me3, hESC_bivalent))]
 
 #=====================================
 
@@ -135,6 +133,40 @@ return(x2)}
 
 
 ############# mixed gaussian model
+
+## tx2gene <- function(){
+##     mart <- biomaRt::useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+##                              dataset = "hsapiens_gene_ensembl",
+##                              host="grch37.ensembl.org",
+##                              path="/biomart/martservice")
+##     t2g <- biomaRt::getBM(attributes = c("ensembl_transcript_id",
+##                               "ensembl_gene_id",
+##                               "hgnc_symbol",
+##                               "refseq_mrna",
+##                               "chromosome_name",
+##                               "start_position",
+##                               "end_position",
+##                               "strand"), mart = mart)
+##     t2g <- dplyr::rename(t2g, target_id = ensembl_transcript_id,
+##                          ens_gene = ensembl_gene_id, ext_gene = hgnc_symbol,
+##                          refseq = refseq_mrna,
+##                          chr = chromosome_name)
+##   return(t2g)			
+## }
+## t2g <- tx2gene()
+
+## t2g <- cbind(t2g,t2g$end_position-t2g$start_position)
+## t2g$chromosome <- as.integer(t2g$chr)
+## t2g <- t2g[!is.na(t2g$chromosome),]
+
+## t2g$chromosome2 <- paste("chr",t2g$chr,sep="")
+
+## colnames(t2g) <- c("target_id","ens_gene","ext_gene","refseq","chrn","start","end","strand","length","chrn2","chr")
+
+## t2g <- t2g[,c("target_id","ens_gene","ext_gene","refseq","chr","length")]
+
+## save(t2g,file="/mnt/gtklab01/ahjung/bivalent/t2g_modalv.RData")
+load("/mnt/gtklab01/ahjung/bivalent/t2g_modalv.RData")
 
 #================================
 plot_mix_comps <- function(x, mu, sigma, lam) {
@@ -198,13 +230,39 @@ raincloud_theme <- theme(
     axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
 
 
-plot_cluster <- function(expvalue,gene){
+plot_cluster <- function(nclass,expvalue,gene,cols,xlim=c(-2,8),ylim=c(0,0.6)){
+
+length(nclass)
+cumsum(nclass)
+
+#cols <- brewer.pal(length(nclass),"Set1")
+plot(density(expvalue[1:cumsum(nclass)[1]]),
+     col=cols[1],
+     xlim=xlim,
+     ylim=ylim,
+     main=gene)
+
+for (i in 2:(length(nclass)-1)) {
+    lines(density(expvalue[cumsum(nclass)[i]:(cumsum(nclass)[i+1]-1)]),
+          col=cols[i])
+}
 
 #color <- ifelse(logivalue, "red", "blue")
-plot(density(expvalue[1:212]),col="black",xlim=c(-2,10),ylim=c(0,1),main=gene)
-lines(density(expvalue[213:350]),col="red")
-lines(density(expvalue[351:455]),col="blue")
-lines(density(expvalue[456:524]),col="green")
+## plot(density(expvalue[1:212]),col="black",xlim=c(-2,10),ylim=c(0,1),main=gene)
+## lines(density(expvalue[213:350]),col="red")
+## lines(density(expvalue[351:455]),col="blue")
+## lines(density(expvalue[456:524]),col="green")
+}
+
+get_colors <- function(n) {
+    return(brewer.pal(length(n),"Set2"))
+}
+
+color_check <- function(cols, coldata) {
+    barplot(rep(1,length(nclass)),
+            col=cols,
+            names.arg=unique(coldata),
+            las=2)
 }
 
 return_density <- function(expvalue_sub,name){
@@ -240,6 +298,27 @@ return(data.frame("gene"=gene,
 }
 
 
+get_tpm <- function(df) {
+## get gene lengths
+x <- t2g[t2g$ext_gene %in% rownames(df),]
+x <- unique(x[,c("ext_gene","length")])
+x <- x[!duplicated(x$ext_gene),]
+
+df2 <- df[unique(x$ext_gene),]
+xlength <- x$length/1000
+df2_rpk <- as.matrix(df2)/xlength
+rownames(df2_rpk) <- rownames(df2)
+
+df2_tpmfactor <- apply(df2_rpk,2, sum)
+
+df2_tpm <- t(t(df2_rpk) / df2_tpmfactor)
+df2_tpm <- df2_tpm[!apply(df2_tpm,1,sum)==0,]
+df2_tpm <- df2_tpm*1000000    
+
+return(df2_tpm)
+}
+
+
 
 test_bimodal <- function(exp) {
 
@@ -261,7 +340,7 @@ return(a$p.value)
 
 fit_bimodal <- function(exp,name) {
 
-    tryCatch(mixmdl <- normalmixEM(exp, k=2, mu=c(0,6),maxit = 10),error=function(e){NA})
+    tryCatch(mixmdl <- normalmixEM(exp, k=2, mu=c(0,6),maxit = 100),error=function(e){NA})
     
 if (!exists("mixmdl")) {
 df <- data.frame("gene"=NA,
@@ -283,13 +362,6 @@ return(df)
 }
 
 
-## messup <- function(exp,zeromin,zeromax) {
-## ## The idea is to add a little variance to zeros
-## if (((sum(exp==0)/length(exp)*100) > 30) & ((sum(exp==0)/length(exp)*100) < 80)) {
-##     exp[sample(which(log(as.numeric(exp)+1)==0),floor(sum(exp==0)*0.5))] <- 0.3 } else { exp } # <- rep(NA,length(exp)) }
-## return(exp)
-## }
-
 messup <- function(sc_cell) {
     # sc_cell must be in log scale
     nnoise <- matrix(rnorm(nrow(sc_cell)*ncol(sc_cell),
@@ -298,14 +370,15 @@ messup <- function(sc_cell) {
     return(sc_cell_messup)
 }
 
-fit_bimodal_multi <- function(ncores, logexp_messup) {
+fit_bimodal_multi <- function(logexp_messup) {
 
 cl <- makeCluster(detectCores()-2) # create a cluster with max-2 cores
 registerDoParallel(cl) # register the cluster
 
 res_tpm = foreach(i = 1:nrow(logexp_messup),
     .combine = "rbind",
-              .packages="mixtools")     %dopar% {
+    .packages = "mixtools",
+    .export = c("fit_bimodal"))     %dopar% {
   # generate a bootstrap sample              
         fit_bimodal(logexp_messup[i,],rownames(logexp_messup)[i])
 }
@@ -316,11 +389,38 @@ return(res_tpm)
 
 }
 
-filter_condition <- function(res_diptest, res_tpm, cond_dip, cond_labmda) {
-condition <- (logtpm_messup_bimodal <= cond_dip) &
-    sapply(1:nrow(res_tpm), function(i) min(res_tpm[i,]$mu1, res_tpm[i,]$mu2) <= 1) &
-        sapply(1:nrow(res_tpm), function(i) max(res_tpm[i,]$mu1, res_tpm[i,]$mu2) > 1)  &
-            sapply(1:nrow(res_tpm), function(i) res_tpm[i,]$lambda1 <= cond_labmda)
-return(condition)
-
+filter_condition <- function(res_diptest, res_tpm, cond_dip=0.01, cond_lambda=0.7, cond_mu=1) {
+## Default conditions are 0.01,0.7,1
+    condition <- (res_diptest <= cond_dip) &
+        sapply(1:nrow(res_tpm),
+               function(i) min(res_tpm[i,]$mu1, res_tpm[i,]$mu2) <= cond_mu) &
+                   sapply(1:nrow(res_tpm),
+                          function(i) max(res_tpm[i,]$mu1, res_tpm[i,]$mu2) > cond_mu)  &
+                              sapply(1:nrow(res_tpm),
+                                     function(i) res_tpm[i,]$lambda1 <= cond_lambda)
+    return(condition)
 }
+
+findtrough <- function(densityy){
+    trough <- which(diff(sign(diff(densityy)))==2)
+    trough <- ifelse(length(trough)>1,trough[1],trough)
+    return(trough)
+}
+
+findcutoff <- function(exp) {
+    dens <- density(exp)
+    return(dens$x[findtrough(dens$y)])
+}
+
+binarizeexp <- function(exp) {
+    cutoff <- findcutoff(exp)
+    return(exp > cutoff)
+}
+
+plottrough <- function(exp){
+    dens <- density(exp)
+    trough <- findtrough(dens$y)
+    plot(dens,main=rownames(exp))
+    abline(v=dens$x[trough],col="red")
+}
+

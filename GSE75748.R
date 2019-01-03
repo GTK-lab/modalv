@@ -89,6 +89,10 @@ lines(plot_hist("EC","BMP4M_1_H3K27me3"),col="red")
 ##   BMP4M_1_H3K27me3, BMP4M_2_H3K27me3,
 ##   BMP4M_1_bivalent, BMP4M_2_bivalent))]
 
+load("/mnt/gtklab01/ahjung/bivalent/bivalent-workspace.RData") ### load histone mark data
+
+hESC_others <- t2g$target_id[!t2g$target_id %in% unique(c(hESC_H3K4me3, hESC_H3K27me3, hESC_bivalent))]
+
 k4genes <- unique(t2g$ext_gene[t2g$target_id %in% hESC_H3K4me3])
 k4genes <- k4genes[!k4genes == ""]
 k27genes <- unique(t2g$ext_gene[t2g$target_id %in% hESC_H3K27me3])
@@ -123,7 +127,7 @@ grid.arrange(
 )
 
 ############################################## can we distinguish real zeros from noise
-sc_cell_original <- sc_cell
+#sc_cell_original <- sc_cell
 
 sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
 sc_cell <- sc_cell[!apply(sc_cell,1,sum)==0,]

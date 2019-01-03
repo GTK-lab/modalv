@@ -43,6 +43,7 @@ messup <- function(sc_cell) {
     return(sc_cell_messup)
 }
 
+
 fit_bimodal_multi <- function(ncores, logexp_messup) {
 #ncores <- detectCores()-2
 cl <- makeCluster(ncores) # create a cluster with max-2 cores
