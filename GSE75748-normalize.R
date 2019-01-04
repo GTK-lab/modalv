@@ -178,7 +178,7 @@ plot_cluster(table(cl1), log_sc_time_tpm["CYP26A1",],"CYP26A1",cols,ylim=c(0,0.8
 
 
 
-par(mfrow=c(7,6))
+par(mfrow=c(1,6))
 #color_check(cols,sc_time_coldata$exp)
 color_check(cols,1:6)
 
@@ -203,6 +203,13 @@ table(cl1),log_sc_time_tpm[x,],
                                 x,
                                 cols))
 color_check(cols,1:6)
+
+library(gridExtra)
+p6 <- plot_time(nclass,
+               as.numeric(log_sc_time_tpm["MRPS26",]),
+               "MRPS26")
+grid.arrange(p,p2,p3,p4,p5,p6, ncol=6)
+
 
 
 #####TODO ggplot, facet_wrap, plot_time function

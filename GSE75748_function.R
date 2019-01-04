@@ -60,18 +60,53 @@ plot_cluster <- function(nclass,
     l <- length(nclass)
     c <- cumsum(nclass)
 
-    plot(density(expvalue[1:c[1]]),
+    cstart <- c(1,rev(rev(c)[-1])+1)
+    cend <- c
+
+    plot(density(expvalue[cstart[1]:cend[1]]),
          col=cols[1],
          xlim=xlim,
          ylim=ylim,
          main=gene,
          lwd=2)
 
-    for (i in 2:(l-1)) {
-        lines(density(expvalue[c[i]:(c[i+1]-1)]),
+    for (i in 2:l) {
+        lines(density(expvalue[cstart[i]:cend[i]]),
               col=cols[i],
               lwd=2)}
 }
+
+return_density <- function(expvalue_sub,name){
+    exptest <- density(expvalue_sub)
+    return(data.frame("x"=exptest$x,"y"=exptest$y,"name"=name))
+}
+
+plot_time <- function(nclass,expvalue,gene) {
+    l <- length(nclass)
+    c <- cumsum(nclass)
+
+    cstart <- c(1,rev(rev(c)[-1])+1)
+    cend <- c
+
+    d <- return_density(expvalue[cstart[1]:cend[1]],
+                        names(nclass)[1])
+    
+    for (i in 2:l) {
+        d <- rbind(d,return_density(expvalue[cstart[i]:cend[i]],
+                            names(nclass)[i]))
+    }
+
+    p <- ggplot(data=d,
+                aes(x=x, y=y, col=name)) + geom_line() + facet_wrap(~name,ncol=1)
+return(p)
+    ## plot(density(expvalue[1:ncate[2]]),
+##          col="black",xlim=c(-2,10),ylim=c(0,1),main=gene)
+## invisible(    sapply(2:(length(ncate)-1), function(x)
+##         lines(density(expvalue[(ncate[x]+1):ncate[x+1]]),col=cols[x])))
+
+}
+
+
 
 get_colors <- function(n) {
     return(brewer.pal(length(n),"Set2")) 
