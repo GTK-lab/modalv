@@ -64,11 +64,13 @@ plot_cluster <- function(nclass,
          col=cols[1],
          xlim=xlim,
          ylim=ylim,
-         main=gene)
+         main=gene,
+         lwd=2)
 
     for (i in 2:(l-1)) {
         lines(density(expvalue[c[i]:(c[i+1]-1)]),
-              col=cols[i])}
+              col=cols[i],
+              lwd=2)}
 }
 
 get_colors <- function(n) {
@@ -195,6 +197,40 @@ binarizeexp <- function(exp) {
     return(exp > cutoff)
 }
 
+findratio <- function(exp,idxrange) {
+    binexp <- binarizeexp(exp)[idxrange]
+    if (all(binexp)) { # all ON
+        return(c(0,1))
+    } else if (all(!binexp)) { # all OFF
+        return(c(1,0))
+    } else {
+        return(prop.table(table(binexp*1)))
+    }
+}
+
+clusterratio <- function(exp, nclass) {
+    l <- length(nclass)
+    c <- cumsum(nclass)
+
+    cstart <- c(1,rev(rev(c)[-1])+1)
+    cend <- c
+
+    cratio <- t(sapply(1:l, function(x) findratio(exp, cstart[x]:cend[x])))
+    rownames(cratio) <- names(nclass)
+    colnames(cratio) <- c("OFF","ON")
+    return(cratio)
+}
+
+windowratio <- function(exp, wsize) {
+    cstart <- seq(1, length(exp), by=floor(length(exp)/wsize))
+    cend <- c(cstart[-1]-1,length(exp))
+
+    cratio <- t(sapply(1:wsize, function(x) findratio(exp, cstart[x]:cend[x])))
+    rownames(cratio) <- 1:wsize
+    colnames(cratio) <- c("OFF","ON")
+    return(cratio)
+}
+
 plottrough <- function(exp){
     dens <- density(exp)
     trough <- findtrough(dens$y)
@@ -216,3 +252,44 @@ plottrough <- function(exp){
 
 
 ## }
+
+get_bit <- function(nclass){
+    bitcomb <- expand.grid(rep(list(0:1),length(nclass)))
+    colnames(bitcomb) <- as.character(1:6)
+    return(bitcomb)
+}
+
+expand_bit_s <- function(bitcomb_s,nclass) {
+    return(unlist(sapply(1:length(nclass), function(i) rep(bitcomb_s[i],nclass[i]))))
+}
+
+expand_bit <- function(nclass) {
+    bitcomb <- get_bit(nclass)
+    idmat <- apply(bitcomb,1, function(i) expand_bit_s(i,nclass))
+    return(idmat)
+}
+
+
+muin_one <- function(idmat, norm_bin_1) {
+    muinx <- apply(idmat, 2,
+                   function(i) aricode::NID(as.numeric(i),
+                                              norm_bin_1))
+    return(muinx)}
+
+muin_all <- function(idmat, norm_bin, ncores=detectCores()-2) {
+
+#    rnames <- rownames(norm_bin)
+    cl <- makeCluster(ncores) # create a cluster with max-2 cores
+    registerDoParallel(cl) # register the cluster
+
+    res = foreach(i = 1:nrow(norm_bin),
+        .combine = "rbind",
+        .packages = "aricode",
+        .export = c("muin_one")) %dopar% {
+            muin_one(idmat, norm_bin[i,])
+        }
+
+    stopCluster(cl) # shut down the cluster
+#    apply(norm_bin,1,function(i) muin_one(idmat, i))
+    return(res)
+}

@@ -81,11 +81,107 @@ a <- shortest.paths(mygraph, 1) # starting from any cell from time 0
 # heatmap of cells ordered according to shortest path (pseudotime)
 
 hmcol <- colorRampPalette(brewer.pal(9, "BuPu"))(20)
+hmcol <- colorRampPalette(brewer.pal(9, "YlGnBu"))(20)
 heatmap.2(matrix(as.numeric(log_sc_time_tpm[bimocondition_sub,]),
                  nrow=nrow(norm))[,order(as.numeric(a))], #rownames(sc_time_messup) %in% bigenes
           trace="none",
-          ColSideColors=cols[sc_time_coldata$exp][order(as.numeric(a))],
+          ColSideColors=cols[cl1][order(as.numeric(a))],
           distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
           col=hmcol,
           Colv=F
           )
+
+norm_bin <- (norm*1)[,order(as.numeric(a))]
+
+ordered_cell <- matrix(as.numeric(log_sc_time_tpm[bimocondition_sub,]),
+                       nrow=nrow(norm))[,order(as.numeric(a))]
+rownames(ordered_cell) <- rownames(log_sc_time_tpm[bimocondition_sub,])
+nclass <- table(cl1[order(as.numeric(a))])
+
+ordered_cell_ratio <- t(sapply(1:nrow(ordered_cell),
+                               function(i)
+                                   clusterratio(ordered_cell[i,],nclass)[,"ON"]))
+
+ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
+                                  function(i)
+                                   windowratio(ordered_cell[i,],20)[,"ON"]))
+
+## hr <- hclust(as.dist(1-cor(t(ordered_cell_ratio), method="pearson")),
+##              method="complete")
+
+hr <- hclust(dist(ordered_cell_ratio_wd))
+## hr <- hclust(dist(muin_bin, method="euclidean"),method="ward.D2")
+
+heatmap.2(ordered_cell[hr$order,][names(cl_ratio)[cl_ratio==6],],
+          trace="none",
+#ColSideColors=cols[as.numeric(sc_time_coldata$exp)][order(as.numeric(a))],
+#          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
+          col=hmcol,
+          ## dist=dist,
+          ## hclust=hclust,
+          ColSideColors=cols[cl1][order(as.numeric(a))],
+          Colv=FALSE,
+          ## Rowv=FALSE,
+          dendrogram = "none"
+          )
+
+
+
+## heatmap.2(muin_bin,
+##           trace="none", col=hmcol,
+##           dendrogram="none")
+
+
+## idmat <- expand_bit(nclass)
+## idmat_c <- t(get_bit(1:6))
+
+## muin_bin <- muin_all(idmat, norm_bin)
+## muin_bin <- muin_all(idmat_c, ordered_cell_ratio)
+
+tsne_out <- Rtsne(ordered_cell_ratio_wd,
+                  pca=FALSE,
+                  perplexity=30,
+                  theta=0.0)
+
+rd1 <- tsne_out$Y[,1:2]
+rownames(rd1) <- rownames(ordered_cell)
+cl_ratio <- Mclust(rd1,6)$classification
+
+heatmap.2(ordered_cell[order(cl_ratio),],
+          trace="none",
+#ColSideColors=cols[as.numeric(sc_time_coldata$exp)][order(as.numeric(a))],
+#          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
+          col=hmcol,
+          ## dist=dist,
+          ## hclust=hclust,
+          ColSideColors=cols[cl1][order(as.numeric(a))],
+          Colv=FALSE,
+          Rowv=FALSE,
+          dendrogram = "none"
+          )
+
+par(mfrow=c(4,2))
+
+plot_cluster(table(cl1), log_sc_time_tpm["SOX2",],"SOX2",cols,ylim=c(0,2),xlim=c(-2,8))
+
+plot_cluster(table(cl1), log_sc_time_tpm["CER1",],"CER1",cols,ylim=c(0,1),xlim=c(-2,12))
+
+plot_cluster(table(cl1), log_sc_time_tpm["DNMT3B",],"DNMT3B",cols,ylim=c(0,1),xlim=c(-2,8))
+
+plot_cluster(table(cl1), log_sc_time_tpm["COCH",],"COCH",cols,ylim=c(0,0.5),xlim=c(-2,8))
+
+plot_cluster(table(cl1), log_sc_time_tpm["BAG3",],"BAG3",cols,ylim=c(0,0.8),xlim=c(-2,8))
+
+plot_cluster(table(cl1), log_sc_time_tpm["PRDM1",],"PRDM1",cols,ylim=c(0,0.8),xlim=c(-2,8))
+
+plot_cluster(table(cl1), log_sc_time_tpm["CYP26A1",],"CYP26A1",cols,ylim=c(0,0.8),xlim=c(-2,11))
+
+
+
+par(mfrow=c(5,10))
+#color_check(cols,sc_time_coldata$exp)
+color_check(cols,1:6)
+
+sapply(100:149, function(x)
+    plot_cluster(table(cl1), log_sc_time_tpm[bimocondition_sub,][x,], rownames(log_sc_time_tpm)[bimocondition_sub][x],
+                 cols))
