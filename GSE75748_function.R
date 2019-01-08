@@ -50,6 +50,66 @@ load("data/t2g_modalv.RData")
 
 #================================
 
+plot_mix_comps <- function(x, mu, sigma, lam) {
+  lam * dnorm(x, mu, sigma)
+}
+
+plot_mixmdl <- function(mixmdl) {
+
+p <- data.frame(x = mixmdl$x) %>%
+  ggplot() +
+  geom_histogram(aes(x, ..density..), binwidth = 0.1, colour = "black", 
+                 fill = "white") +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[1], mixmdl$sigma[1], lam = mixmdl$lambda[1]),
+                colour = "red", lwd = 1.5) +
+  stat_function(geom = "line", fun = plot_mix_comps,
+                args = list(mixmdl$mu[2], mixmdl$sigma[2], lam = mixmdl$lambda[2]),
+                colour = "blue", lwd = 1.5) + xlim(0,12.5) +
+                    ylab("Density") +
+                        ggtitle(paste0("mu is ",
+                                       round(mixmdl$mu[1],digits=2),
+                                       ", ",
+                                       round(mixmdl$mu[2],digits=2),
+                                       "; lambda is ",
+                                       round(mixmdl$lambda[1],digits=2),
+                                       ", ",
+                                       round(mixmdl$lambda[2],digits=2))) +
+                                           theme_bw()
+return(p)
+}
+
+get_mixmdl <- function(allexp) {
+
+set.seed(1)
+mixmdl <- normalmixEM(allexp, k = 2)
+
+return(mixmdl)
+}
+
+plot_mg <- function(allexp) {
+    mixmdl <- get_mixmdl(allexp)
+    p <- plot_mixmdl(mixmdl)
+    return(p)
+}
+
+raincloud_theme <- theme(
+    text = element_text(size = 10),
+    axis.title.x = element_text(size = 16),
+    axis.title.y = element_text(size = 16),
+    axis.text = element_text(size = 14),
+#    axis.text.x = element_text(angle = 45, vjust = 0.5),
+    legend.title=element_text(size=16),
+    legend.text=element_text(size=16),
+    legend.position = "right",
+    plot.title = element_text(lineheight=.8, face="bold", size = 16),
+    panel.border = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.grid.major = element_blank(),
+    axis.line.x = element_line(colour = 'black', size=0.5, linetype='solid'),
+    axis.line.y = element_line(colour = 'black', size=0.5, linetype='solid'))
+
+
 plot_cluster <- function(nclass,
                          expvalue,
                          gene,
