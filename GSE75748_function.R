@@ -142,6 +142,8 @@ return_density <- function(expvalue_sub,name){
 }
 
 plot_time <- function(nclass,expvalue,gene) {
+    cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
     l <- length(nclass)
     c <- cumsum(nclass)
 
@@ -157,7 +159,10 @@ plot_time <- function(nclass,expvalue,gene) {
     }
 
     p <- ggplot(data=d,
-                aes(x=x, y=y, col=name)) + geom_line() + facet_wrap(~name,ncol=1)
+                aes(x=x, y=y, col=name)) +
+                    geom_line() +
+                        facet_wrap(~name,ncol=1) +
+                            scale_colour_manual(values=cbPalette)
 return(p)
     ## plot(density(expvalue[1:ncate[2]]),
 ##          col="black",xlim=c(-2,10),ylim=c(0,1),main=gene)

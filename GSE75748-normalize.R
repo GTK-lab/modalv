@@ -4,10 +4,13 @@ source("GSE75748_data.R")
 source("GSE75748_function.R")
 
 ## sc_cell_original <- sc_cell
-sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
-sc_cell <- sc_cell[!apply(sc_cell,1,sum)==0,]
-sc_cell_coldata_H1 <- sc_cell_coldata[sc_cell_coldata$cell != c("H9"),]
-sc_cell_coldata_H1$cell <- as.factor(as.character(sc_cell_coldata_H1$cell))
+## sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
+## sc_cell <- sc_cell[!apply(sc_cell,1,sum)==0,]
+## sc_cell_coldata_H1 <- sc_cell_coldata[sc_cell_coldata$cell != c("H9"),]
+## sc_cell_coldata_H1$cell <- as.factor(as.character(sc_cell_coldata_H1$cell))
+sc_cell_coldata_H1$cell = factor(sc_cell_coldata_H1$cell,
+    levels(sc_cell_coldata_H1$cell)[c(3,1,2,4,5,6)])
+
 
 sc_cell_tpm <- get_tpm(sc_cell)
 log_sc_cell_tpm <- log(sc_cell_tpm+1)
@@ -31,61 +34,74 @@ cols <- get_colors(nclass)
 
 
 ## TSNE
-set.seed(2)
+set.seed(1)
 
-bimocondition_sub <- (rownames(log_sc_cell_tpm) %in% k27genes)# & bimocondition
+bimocondition_sub <- (rownames(log_sc_cell_tpm) %in% bigenes) & bimocondition
 
-tsne_out_biv <- Rtsne(t(unique(log_sc_cell_tpm[bimocondition_sub,])),
+tsne_out <- Rtsne(t(unique(log_sc_cell_tpm_messup[bimocondition_sub,])),
                   pca=FALSE,
                   perplexity=30,
                   theta=0.0)
 
-tsne1_biv <- ggplot(data=data.frame("C1"=tsne_out_biv$Y[,1],"C2"=tsne_out_biv$Y[,2],
+tsne1 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
            "type"=mclass),
        aes(C1,C2,col=type)) +
     geom_point()
+
+rd1 <- tsne_out$Y[,1:2]
+rownames(rd1) <- mclass
+
+cl1 <- Mclust(rd1,length(nclass))$classification
+#plot(rd1_pc, pch=16, asp = 1,col=cols[cl1])
 
 tsne2 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
            "type"=as.factor(cl1)),
        aes(C1,C2,col=type)) +
     geom_point()
 
-grid.arrange(tsne1,tsne1_k4,tsne1_bi,tsne1_biv,ncol=2)
-
-rd1 <- tsne_out$Y[,1:2]
-rownames(rd1) <- mclass
+grid.arrange(tsne1,tsne2,ncol=2)
 
 ## pseudocell
 
+# binarize 
 log_sc_cell_tpm_messup_bin <- t(apply(log_sc_cell_tpm_messup[bimocondition_sub,],1,binarizeexp))
 
-norm <- log_sc_cell_tpm_messup_bin[,mclass %in% c("H1","DEC","EC")]
+norm <- log_sc_cell_tpm_messup_bin#[,mclass %in% c("H1","DEC","EC")]
 
-d <- as.dist(1 - cor(norm, method = 'sp') ^ 2)
-PC <- prcomp(d)
-rd1_pc <- PC$x[,1:2]
+## d <- as.dist(1 - cor(norm, method = 'sp') ^ 2)
+## PC <- prcomp(d)
+## rd1_pc <- PC$x[,1:2]
 
-par(mfrow=c(1,2))
-plot(rd1_pc, pch=16, asp = 1,col=cols[mclass])
-
-cl1 <- Mclust(rd1,length(nclass))$classification
-plot(rd1_pc, pch=16, asp = 1,col=cols[cl1])
+## par(mfrow=c(1,2))
+## plot(rd1_pc, pch=16, asp = 1,col=cols[mclass])
 
 #scatterplot3d(PC$x[,1],PC$x[,2],PC$x[,3],color=cols[sc_cell_coldata$exp])
 
 
 # MST
-my.mst <- mstree(dist(rd1_pc),1)
+my.mst <- mstree(dist(rd1),1)
+mygraph <- graph_from_adjacency_matrix(neig2mat(my.mst))
+a <- shortest.paths(mygraph, 1) # starting from any cell from cell 0
+a2 <- get.shortest.paths(mygraph,1) # need to keep the option to specify end point
 
-s.label(rd1_pc, clab = 0, cpoi = 1, neig = my.mst, cnei = 1)#, label = cols[sc_cell_coldata_H1$cell])
+## using igraph
+longest <- which(unlist(lapply(a2$vpath,length))==max(unlist(lapply(a2$vpath,length))))
 
-points(rd1_pc, col = cols[mclass], pch=16, asp = 1, cex=0.5)
-points(rd1_pc, col = cols[cl1], pch=16, asp = 1, cex=0.5)
+V(mygraph)$color <- cols[cl1]
+E(mygraph, path=a2$vpath[[longest]])$color <- "red"
+V(mygraph)[as.numeric(a2$vpath[[longest]])]$color <- "black"
+
+plot(mygraph,vertex.size=2, layout=rd1,vertex.label=NA,edge.arrow.size=0.5)
+
+## s.label(rd1_pc, clab = 0, cpoi = 1, neig = my.mst, cnei = 1)#, label = cols[sc_cell_coldata_H1$cell])
+
+## points(rd1_pc, col = cols[mclass], pch=16, asp = 1, cex=0.5)
+## points(rd1_pc, col = cols[cl1], pch=16, asp = 1, cex=0.5)
 
 # finding shortest path to order cells
 
-mygraph <- graph_from_adjacency_matrix(neig2mat(my.mst))
-a <- shortest.paths(mygraph, 1) # starting from any cell from cell 0
+
+
 
 p1 <- ggplot(data.frame("x"=1:ncol(norm),"y"=rep(1,ncol(norm)),"group"=mclass[order(as.numeric(a))]),
             aes(x=x, y=y, fill=group)) +
@@ -112,20 +128,22 @@ heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
 #          dendrogram = "none"
           )
 
-norm_bin <- (norm*1)[,order(as.numeric(a))]
+norder <- order(as.numeric(cl1))  # order(as.numeric(a))
 
+norm_bin <- (norm*1)[,norder]
 ordered_cell <- matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
-                       nrow=nrow(norm))[,order(as.numeric(a))]
+                       nrow=nrow(norm))[,norder]
 rownames(ordered_cell) <- rownames(log_sc_cell_tpm[bimocondition_sub,])
-nclass <- table(cl1[order(as.numeric(a))])
+nclass <- table(cl1[norder])
 
 ## ordered_cell_ratio <- t(sapply(1:nrow(ordered_cell),
 ##                                function(i)
 ##                                    clusterratio(ordered_cell[i,],nclass)[,"ON"]))
 
+ncluster <- 30
 ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
                                   function(i)
-                                   windowratio(ordered_cell[i,],20)[,"ON"]))
+                                   windowratio(ordered_cell[i,],ncluster)[,"ON"]))
 
 ## hr <- hclust(as.dist(1-cor(t(ordered_cell_ratio), method="pearson")),
 ##              method="complete")
@@ -143,7 +161,8 @@ heatmap.2(ordered_cell_ratio_wd[hr$order,],
 #          ColSideColors=cols[cl1][order(as.numeric(a))],
           Colv=FALSE,
           Rowv=FALSE,
-          dendrogram = "none"
+          dendrogram = "none",
+          RowSideColors=as.character(cl_ratio[order(cl_ratio)]),
           )
 
 
@@ -166,6 +185,7 @@ tsne_out <- Rtsne(ordered_cell_ratio_wd,
 
 rd1_wd <- tsne_out$Y[,1:2]
 rownames(rd1_wd) <- rownames(ordered_cell)
+
 cl_ratio <- Mclust(rd1_wd,8)$classification
 
 heatmap.2(ordered_cell[order(cl_ratio),],
@@ -175,14 +195,14 @@ heatmap.2(ordered_cell[order(cl_ratio),],
           col=hmcol,
           ## dist=dist,
           ## hclust=hclust,
-          ColSideColors=cols[cl1][order(as.numeric(a))],
+          ColSideColors=cols[cl1][norder],
           Colv=FALSE,
           Rowv=FALSE,
           RowSideColors=as.character(cl_ratio[order(cl_ratio)]),
           dendrogram = "none"
           )
 
-par(mfrow=c(4,2))
+
 
 plot_cluster(table(cl1), log_sc_cell_tpm["SOX2",],"SOX2",cols,ylim=c(0,2),xlim=c(-2,8))
 
@@ -318,6 +338,11 @@ points(apply(bimo_bin[rownames(bimo_bin) %in% k4genes,],1,sum)/856*100,col="red"
 
 boxplot(apply(bimo_bin[rownames(bimo_bin) %in% k4genes,],1,sum)/856*100,main="k4mono",ylim=c(0,100))
 boxplot(apply(bimo_bin[rownames(bimo_bin) %in% k27genes,],1,sum)/856*100,main="k27mono",ylim=c(0,100))
+
+
+
+
+
 
 
 
