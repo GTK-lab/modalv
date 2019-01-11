@@ -46,6 +46,7 @@ library(igraph)
 ## t2g <- t2g[,c("target_id","ens_gene","ext_gene","refseq","chr","length")]
 
 ## save(t2g,file="/mnt/gtklab01/ahjung/bivalent/t2g_modalv.RData")
+
 load("data/t2g_modalv.RData")
 
 #================================
@@ -237,10 +238,10 @@ fit_bimodal <- function(exp,name) {
 return(df)
 }
 
-messup <- function(sc_cell) {
+messup <- function(sc_cell, sd) {
     # sc_cell must be in log scale
     nnoise <- matrix(rnorm(nrow(sc_cell)*ncol(sc_cell),
-                           mean=0, sd=0.1),ncol=ncol(sc_cell))
+                           mean=0, sd=sd),ncol=ncol(sc_cell))
     sc_cell_messup <- sc_cell+nnoise
     return(sc_cell_messup)
 }
@@ -261,6 +262,86 @@ res_tpm = foreach(i = 1:nrow(logexp_messup),
 
 stopCluster(cl) # shut down the cluster
 return(res_tpm)
+}
+
+fit_bimodal_one <- function(logexp_messup) {
+    res_tpm <- fit_bimodal(logexp_messup[1,], rownames(logexp_messup)[1])
+
+    sapply(2:nrow(logexp_messup), function(i)
+        res_tpm <<- rbind(res_tpm,
+                          fit_bimodal(logexp_messup[i,], rownames(logexp_messup)[i])))
+return(res_tpm)
+}
+
+run_multi <- function(logexp, n, ncores=detectCores()-2) {
+
+    cl <- makeCluster(ncores) # create a cluster with max-2 cores
+    registerDoParallel(cl) # register the cluster
+
+    optimize_res = foreach(i = 1:length(n),
+        .combine = "cbind",
+        .packages = "diptest",
+        .export = c("messup",
+            "dip.test",
+            "optimize_noise_sub",
+            "test_bimodal",
+            "fit_bimodal",
+            "fit_bimodal_one",
+            "filter_condition")) %dopar% {
+            optimize_noise_sub(logexp,n[i])
+        }
+
+    stopCluster(cl) # shut down the cluster
+
+    ## optimize_res <- data.frame(optimize_noise_sub(logexp,n[1]),
+    ##                            row.names=rownames(logexp))
+    ## sapply(n[-1],
+    ##        function(x) optimize_res <<- cbind(optimize_res,
+    ##                                           optimize_noise_sub(logexp,x)))
+
+    colnames(optimize_res) <- as.character(n)
+    return(optimize_res)
+}
+
+optimize_noise_sub <- function(logexp, sd, ncores) {
+    logexp_m <- messup(logexp, sd)
+    logexp_m_bimodal <- apply(logexp_m,
+                              1,
+                              test_bimodal)
+
+    bimofit <- fit_bimodal_multi(logexp_m, ncores)
+    bimocondition <- filter_condition(logexp_m_bimodal,
+                                      bimofit)
+    return(bimocondition)
+}
+
+optimize_noise <- function(logexp, niter=30, ncores=detectCores()-2) {
+    n <- seq(0,2,length.out=niter)
+    optimize_res <- optimize_noise_sub(logexp, n[1], ncores)
+    sapply(n[-1],
+           function(x) optimize_res <<- cbind(optimize_res,
+                                              optimize_noise_sub(logexp,x,ncores)))
+    return(optimize_res)
+}
+
+plot_opti <- function(optimize_res) {
+    optimize_num <- apply(optimize_res,2,sum,na.rm=TRUE)
+    plot(as.numeric(colnames(optimize_res)),
+         optimize_num,
+         ylab="total number of bimodal genes",
+         xlab="S.D.")
+    ## scatter.smooth(1:length(optimize_num),optimize_num,
+    ##                lpars = list(col="red", lwd=3))
+    ##                ## main=,
+    ##                ## ylab="Fraction of ON",
+    ##                ## xlab="windows")
+}
+
+bootstrap_opti <- function(logexp, sd=0.1, nbootstrap=30, ncores=detectCores()-2) {
+    n <- rep(sd,nbootstrap)
+    boostrap_res <- run_multi(logexp, n, ncores)
+    bootstrap_num <- apply(bootstrap_res,1,sum)/nbootstrap
+    return(bootstrap_num)
 }
 
 filter_condition <- function(res_diptest,

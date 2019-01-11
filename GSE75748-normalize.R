@@ -14,15 +14,15 @@ sc_cell_coldata_H1$cell = factor(sc_cell_coldata_H1$cell,
 
 sc_cell_tpm <- get_tpm(sc_cell)
 log_sc_cell_tpm <- log(sc_cell_tpm+1)
-log_sc_cell_tpm_messup <- messup(log_sc_cell_tpm)
+log_sc_cell_tpm_messup <- messup(log_sc_cell_tpm, 0.1)
 
 log_sc_cell_tpm_messup_bimodal <- apply(log_sc_cell_tpm_messup, 1, test_bimodal)
 
-bimofit <- fit_bimodal_multi(log_sc_cell_tpm_messup)
+bimofit <- fit_bimodal_multi(log_sc_time_tpm_messup)
 
-bimocondition <- filter_condition(log_sc_cell_tpm_messup_bimodal, bimofit)
+bimocondition <- filter_condition(log_sc_time_tpm_messup_bimodal, bimofit)
 
-mclass <- sc_cell_coldata_H1$cell
+mclass <- sc_time_coldata$exp
 nclass <- table(mclass)
 cols <- get_colors(nclass)
 ## par(mfrow=c(5,10))
@@ -151,7 +151,7 @@ ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
 hr <- hclust(dist(ordered_cell_ratio_wd))
 ## hr <- hclust(dist(muin_bin, method="euclidean"),method="ward.D2")
 
-heatmap.2(ordered_cell_ratio_wd[hr$order,],
+heatmap.2(ordered_cell_ratio_wd[subcondition,],#hr$order,],
           trace="none",
 #ColSideColors=cols[as.numeric(sc_cell_coldata$exp)][order(as.numeric(a))],
 #          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
@@ -233,7 +233,11 @@ sapply(100:149, function(x)
 par(mfrow=c(1,6))
 
 sapply(c("BAG3","GATA6","NBPF15","BID","RARRES2","MRPS26"),
-       function(x) scatter.smooth(ordered_cell_ratio_wd[x,], lpars = list(col="red", lwd=3), main=x, ylab="Fraction of ON", xlab="windows"))
+       function(x) scatter.smooth(ordered_cell_ratio_wd[x,],
+                                  lpars = list(col="red", lwd=3),
+                                  main=x,
+                                  ylab="Fraction of ON",
+                                  xlab="windows"))
 
 #plot.new()
 
@@ -260,9 +264,7 @@ grid.arrange(p,p2,p3,p4,p5,p6, ncol=6)
 
 library(metrumrg)
 
-plot_cv <- function(expmat,logstatus, plotstatus) {
-                                        # logstatus shows whether the data is in log-scale or not
-    # plotstatus shows whether to call for plot or points
+get_cv <- function(expmat, logstatus) {
     m_mean <- apply(expmat,1,mean)
 m_sd <- apply(expmat,1,sd)
 
@@ -272,6 +274,14 @@ m_cv <- sapply(1:nrow(expmat),
 m_cv <- sapply(1:nrow(expmat),
       function(i) cvNormal(m_sd[i], m_mean[i])) }
 
+    return(m_cv)
+}
+
+plot_cv <- function(expmat,logstatus, plotstatus) {
+                                        # logstatus shows whether the data is in log-scale or not
+    # plotstatus shows whether to call for plot or points
+    m_mean <- apply(expmat,1,mean)
+m_cv <- get_cv(expmat,logstatus)
 if (plotstatus) {
 plot(m_mean, m_cv) } else {
 points(m_mean, m_cv, col="red") }
@@ -279,44 +289,51 @@ points(m_mean, m_cv, col="red") }
 }
 
 # comparing variance
-par(mfrow=c(2,2))
-plot_cv(log_sc_cell_tpm, TRUE, TRUE)
+par(mfrow=c(1,2))
+plot_cv(log_sc_time_tpm, TRUE, TRUE)
 plot_cv(ordered_cell, TRUE, FALSE)
 
-plot_cv(log_sc_cell_tpm[order(apply(log_sc_cell_tpm,1,sd), decreasing=TRUE),][1:1000,], TRUE, FALSE)
+plot_cv(log_sc_time_tpm[vargenes,],TRUE,FALSE)
 
-boxplot(apply(log_sc_cell_tpm,1,mean))
-boxplot(apply(ordered_cell,1,mean))
-boxplot(apply(log_sc_cell_tpm[order(apply(log_sc_cell_tpm,1,sd), decreasing=TRUE),][1:1000,],1,mean))
+m_cv <- get_cv(log_sc_time_tpm,TRUE)
+vargenes <- names(m_cv)[order(m_cv,decreasing=TRUE)][1:length(bimogenes)]
+
+
+
+## boxplot(apply(log_sc_cell_tpm,1,mean))
+## boxplot(apply(ordered_cell,1,mean))
+## boxplot(apply(log_sc_cell_tpm[order(apply(log_sc_cell_tpm,1,sd), decreasing=TRUE),][1:1000,],1,mean))
 
 ### only bivalent genes
 
 log_sc_cell_tpm_bi <- log_sc_cell_tpm[rownames(log_sc_cell_tpm) %in% bigenes,]
 
-tsne_out <- Rtsne(t(unique(log_sc_cell_tpm_bi)),
+tsne_out <- Rtsne(t(unique(log_sc_time_tpm[bimogenes[bimogenes %in% bigenes],])),
                   pca=FALSE,
                   perplexity=30,
                   theta=0.0)
 
-rd1_bi <- tsne_out$Y[,1:2]
+rd1_cell <- tsne_out$Y[,1:2]
 
-ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
-           "type"=sc_cell_coldata$exp),
+tsne_bimo <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
+           "type"=mclass),
        aes(C1,C2,col=type)) +
     geom_point()
 
-cl_bi <- Mclust(rd1_bi,8)$classification
+grid.arrange(tsne_vr, tsne_bimo,ncol=2)
+
+cl_cell <- Mclust(rd1_cell,2)$classification
 
 
-heatmap.2(log_sc_cell_tpm_bi[,order(cl_bi)],
+heatmap.2(log_sc_cell_tpm[vargenes,],
           trace="none",
 #ColSideColors=cols[as.numeric(sc_cell_coldata$exp)][order(as.numeric(a))],
 #          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
           col=hmcol,
           ## dist=dist,
           ## hclust=hclust,
-          ColSideColors=cols[cl_bi[order(cl_bi)]],
-          Colv=FALSE,
+          ColSideColors=cols[mclass],
+#          Colv=FALSE,
           ## Rowv=FALSE,
 #          RowSideColors=as.character(cl_bi[order(cl_bi)]),
           dendrogram = "none"
@@ -339,14 +356,16 @@ points(apply(bimo_bin[rownames(bimo_bin) %in% k4genes,],1,sum)/856*100,col="red"
 boxplot(apply(bimo_bin[rownames(bimo_bin) %in% k4genes,],1,sum)/856*100,main="k4mono",ylim=c(0,100))
 boxplot(apply(bimo_bin[rownames(bimo_bin) %in% k27genes,],1,sum)/856*100,main="k27mono",ylim=c(0,100))
 
+### optimizing s.d. value
+
+optimize_res <- optimize_noise(log_sc_cell_tpm, 20, 30)
+
+plot_opti(optimize_res)
+
+opti_bimonum <- apply(optimize_res,2,sum)
+mysd <- as.numeric(colnames(optimize_res)[opti_bimonum == max(opti_bimonum)])
+
+bootstrap_opti(log_sc_cell_tpm,mysd,20,30)
 
 
-
-
-
-
-
-
-
-
-
+test <- test(cbind,optimize_noise_sub(logexp,0.1))
