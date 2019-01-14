@@ -355,7 +355,7 @@ bootstrap_opti <- function(logexp, sd=0.1, nbootstrap=30, ncores=detectCores()-2
     colnames(bootstrap_res) <- as.character(n)
 
 #    bootstrap_num <- apply(bootstrap_res,1,sum)/nbootstrap
-    return(bootstrap_num)
+    return(bootstrap_res)
 }
 
 filter_condition <- function(res_diptest,
