@@ -3,26 +3,27 @@ setwd("~/projects/bivalent/modalv")
 source("GSE75748_data.R")
 source("GSE75748_function.R")
 
-## sc_cell_original <- sc_cell
-## sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
-## sc_cell <- sc_cell[!apply(sc_cell,1,sum)==0,]
-## sc_cell_coldata_H1 <- sc_cell_coldata[sc_cell_coldata$cell != c("H9"),]
-## sc_cell_coldata_H1$cell <- as.factor(as.character(sc_cell_coldata_H1$cell))
+sc_cell_original <- sc_cell
+sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
+sc_cell <- sc_cell[!apply(sc_cell,1,sum)==0,]
+sc_cell_coldata_H1 <- sc_cell_coldata[sc_cell_coldata$cell != c("H9"),]
+sc_cell_coldata_H1$cell <- as.factor(as.character(sc_cell_coldata_H1$cell))
 sc_cell_coldata_H1$cell = factor(sc_cell_coldata_H1$cell,
     levels(sc_cell_coldata_H1$cell)[c(3,1,2,4,5,6)])
 
-
 sc_cell_tpm <- get_tpm(sc_cell)
 log_sc_cell_tpm <- log(sc_cell_tpm+1)
-log_sc_cell_tpm_messup <- messup(log_sc_cell_tpm, 0.1)
 
+log_sc_cell_tpm_messup <- messup(log_sc_cell_tpm, 1e-05)
 log_sc_cell_tpm_messup_bimodal <- apply(log_sc_cell_tpm_messup, 1, test_bimodal)
 
-bimofit <- fit_bimodal_multi(log_sc_time_tpm_messup)
+bimofit <- fit_bimodal_multi(log_sc_cell_tpm_messup,ncores=30)
 
-bimocondition <- filter_condition(log_sc_time_tpm_messup_bimodal, bimofit)
+bimocondition <- filter_condition(log_sc_cell_tpm_messup_bimodal, bimofit)
 
-mclass <- sc_time_coldata$exp
+#sum(bimocondition,na.rm=TRUE) #2604
+
+mclass <- sc_cell_coldata_H1$cell
 nclass <- table(mclass)
 cols <- get_colors(nclass)
 ## par(mfrow=c(5,10))
@@ -43,7 +44,8 @@ tsne_out <- Rtsne(t(unique(log_sc_cell_tpm_messup[bimocondition_sub,])),
                   perplexity=30,
                   theta=0.0)
 
-tsne1 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
+tsne1 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],
+                    "C2"=tsne_out$Y[,2],
            "type"=mclass),
        aes(C1,C2,col=type)) +
     geom_point()
@@ -91,7 +93,11 @@ V(mygraph)$color <- cols[cl1]
 E(mygraph, path=a2$vpath[[longest]])$color <- "red"
 V(mygraph)[as.numeric(a2$vpath[[longest]])]$color <- "black"
 
-plot(mygraph,vertex.size=2, layout=rd1,vertex.label=NA,edge.arrow.size=0.5)
+plot(mygraph,
+     vertex.size=2,
+     layout=rd1,
+     vertex.label=NA,
+     edge.arrow.size=0.5)
 
 ## s.label(rd1_pc, clab = 0, cpoi = 1, neig = my.mst, cnei = 1)#, label = cols[sc_cell_coldata_H1$cell])
 
@@ -118,20 +124,21 @@ grid.arrange(p1,p2,ncol=1)
 hmcol <- colorRampPalette(brewer.pal(9, "BuPu"))(20)
 #hmcol <- colorRampPalette(brewer.pal(9, "YlGnBu"))(20)
 heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
-                 nrow=nrow(norm))[,mclass %in% c("H1","DEC","EC")][,order(as.numeric(a))], #rownames(sc_cell_messup) %in% bigenes
+                 nrow=nrow(norm))[,order(cl1)],#[,order(as.numeric(a))], #rownames(sc_cell_messup) %in% bigenes
           trace="none",
-          ColSideColors=cols[mclass][mclass %in% c("H1","DEC","EC")][order(as.numeric(a))],
-          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
+          ColSideColors=cols[cl1][order(cl1)],#[order(as.numeric(a))],
+          distfun = function(x)
+              as.dist(1 - cor(t(x), method = 'sp') ^ 2),
           col=hmcol,
-#          Colv=F,
+          Colv=F,
 #          Rowv=F,
-#          dendrogram = "none"
+          dendrogram = "none"
           )
 
 norder <- order(as.numeric(cl1))  # order(as.numeric(a))
 
 norm_bin <- (norm*1)[,norder]
-ordered_cell <- matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
+ordered_cell <- matrix(as.numeric(log_sc_cell_tpm_messup[bimocondition_sub,]),
                        nrow=nrow(norm))[,norder]
 rownames(ordered_cell) <- rownames(log_sc_cell_tpm[bimocondition_sub,])
 nclass <- table(cl1[norder])
@@ -140,10 +147,14 @@ nclass <- table(cl1[norder])
 ##                                function(i)
 ##                                    clusterratio(ordered_cell[i,],nclass)[,"ON"]))
 
-ncluster <- 30
+bn <- function(i, wsize) {
+windowratio(ordered_cell[i,],table(as.numeric(cl1)),wsize)[,"ON"]    
+}
+
+wsize <- 30
 ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
-                                  function(i)
-                                   windowratio(ordered_cell[i,],ncluster)[,"ON"]))
+                                  function(x) bn(x, wsize)))
+
 
 ## hr <- hclust(as.dist(1-cor(t(ordered_cell_ratio), method="pearson")),
 ##              method="complete")
@@ -151,21 +162,31 @@ ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
 hr <- hclust(dist(ordered_cell_ratio_wd))
 ## hr <- hclust(dist(muin_bin, method="euclidean"),method="ward.D2")
 
-heatmap.2(ordered_cell_ratio_wd[subcondition,],#hr$order,],
+heatmap.2(ordered_cell_ratio_wd[hr$order,],
           trace="none",
 #ColSideColors=cols[as.numeric(sc_cell_coldata$exp)][order(as.numeric(a))],
 #          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
           col=hmcol,
           ## dist=dist,
           ## hclust=hclust,
-#          ColSideColors=cols[cl1][order(as.numeric(a))],
+          ColSideColors=cols[bin_clusters(nclass,wsize)],
           Colv=FALSE,
           Rowv=FALSE,
-          dendrogram = "none",
-          RowSideColors=as.character(cl_ratio[order(cl_ratio)]),
+          dendrogram = "none"
+#          RowSideColors=as.character(cl_ratio[order(cl_ratio)]),
           )
 
-
+heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
+                 nrow=nrow(norm))[hr$order,order(cl1)],#[,order(as.numeric(a))], #rownames(sc_cell_messup) %in% bigenes
+          trace="none",
+          ColSideColors=cols[cl1][order(cl1)],#[order(as.numeric(a))],
+          distfun = function(x)
+              as.dist(1 - cor(t(x), method = 'sp') ^ 2),
+          col=hmcol,
+          Colv=F,
+          Rowv=F,
+          dendrogram = "none"
+          )
 
 ## heatmap.2(muin_bin,
 ##           trace="none", col=hmcol,
@@ -358,14 +379,20 @@ boxplot(apply(bimo_bin[rownames(bimo_bin) %in% k27genes,],1,sum)/856*100,main="k
 
 ### optimizing s.d. value
 
-optimize_res <- optimize_noise(log_sc_cell_tpm, 20, 30)
+optimize_res <- optimize_noise(log_sc_cell_tpm, 5, 30)
 
-plot_opti(optimize_res)
+## pdf("/mnt/gtklab01/ahjung/Figures/modalv/optimize_noise.pdf",width=10,height=5)
+## plot_opti(optimize_res)
+## dev.off()
 
-opti_bimonum <- apply(optimize_res,2,sum)
+# best sd for sc_cell data is 1e-05
+
+
+opti_bimonum <- apply(optimize_res,2,sum,na.rm=TRUE)
 mysd <- as.numeric(colnames(optimize_res)[opti_bimonum == max(opti_bimonum)])
 
-bootstrap_opti(log_sc_cell_tpm,mysd,20,30)
+mysd <- 1e-05
+bootstrap_num <- bootstrap_opti(log_sc_cell_tpm, mysd, 100, 20)
 
+table(bootstrap_num)
 
-test <- test(cbind,optimize_noise_sub(logexp,0.1))

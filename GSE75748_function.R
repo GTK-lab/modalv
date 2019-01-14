@@ -1,16 +1,21 @@
+## for mixed model
+library(diptest)
+library(mixtools)
+## for visualization
+library(dplyr)
 library(ggplot2)
 library(gridExtra)
-library(mixtools)
-library(dplyr)
 library(gplots)
 library(RColorBrewer)
-library(diptest)
+## for multi-thread processing
 library(doParallel)
+## for clustering and graph structures
 library(Rtsne)
 library(mclust)
-library(scatterplot3d)
-library(ade4)
 library(igraph)
+library(scatterplot3d) # optional
+library(ade4) # optional
+
 
 ############# Ensembl server is sometimes down. Prefer not to run this everytime.
 
@@ -48,7 +53,6 @@ library(igraph)
 ## save(t2g,file="/mnt/gtklab01/ahjung/bivalent/t2g_modalv.RData")
 
 load("data/t2g_modalv.RData")
-
 #================================
 
 plot_mix_comps <- function(x, mu, sigma, lam) {
@@ -117,10 +121,8 @@ plot_cluster <- function(nclass,
                          cols,
                          xlim=c(-2,8),
                          ylim=c(0,0.6)) {
-
     l <- length(nclass)
     c <- cumsum(nclass)
-
     cstart <- c(1,rev(rev(c)[-1])+1)
     cend <- c
 
@@ -137,17 +139,19 @@ plot_cluster <- function(nclass,
               lwd=2)}
 }
 
-return_density <- function(expvalue_sub,name){
+return_density <- function(expvalue_sub,
+                           name){
     exptest <- density(expvalue_sub)
     return(data.frame("x"=exptest$x,"y"=exptest$y,"name"=name))
 }
 
-plot_time <- function(nclass,expvalue,gene) {
+plot_time <- function(nclass,
+                      expvalue,
+                      gene) {
     cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
     l <- length(nclass)
     c <- cumsum(nclass)
-
     cstart <- c(1,rev(rev(c)[-1])+1)
     cend <- c
 
@@ -156,8 +160,7 @@ plot_time <- function(nclass,expvalue,gene) {
     
     for (i in 2:l) {
         d <- rbind(d,return_density(expvalue[cstart[i]:cend[i]],
-                            names(nclass)[i]))
-    }
+                            names(nclass)[i]))}
 
     p <- ggplot(data=d,
                 aes(x=x, y=y, col=name)) +
@@ -211,7 +214,8 @@ test_bimodal <- function(exp) {
     return(a$p.value)
 }
 
-fit_bimodal <- function(exp,name) {
+fit_bimodal <- function(exp,
+                        name) {
 
     tryCatch(mixmdl <- normalmixEM(exp,
                                    k=2,
@@ -233,7 +237,7 @@ fit_bimodal <- function(exp,name) {
                          "lambda1"=mixmdl$lambda[1],
                          "lambda2"=mixmdl$lambda[2],
                          "converge"=rev(mixmdl$all.loglik)[1] == rev(mixmdl$all.loglik)[2] )
-}
+   }
 
 return(df)
 }
@@ -304,6 +308,7 @@ run_multi <- function(logexp, n, ncores=detectCores()-2) {
 }
 
 optimize_noise_sub <- function(logexp, sd, ncores) {
+    cat("noise model with sd= ",sd,"\n")
     logexp_m <- messup(logexp, sd)
     logexp_m_bimodal <- apply(logexp_m,
                               1,
@@ -316,11 +321,13 @@ optimize_noise_sub <- function(logexp, sd, ncores) {
 }
 
 optimize_noise <- function(logexp, niter=30, ncores=detectCores()-2) {
-    n <- seq(0,2,length.out=niter)
+n <- c(0,1e-11,1e-10,1e-09,1.5e-08,1e-08,1e-07,1e-06,1.5e-5,1e-05,1.5e-04,1e-04,1e-03,1e-02,1e-01,2e-01,3e-01,4e-01,5e-01)
+#    n <-seq(0.2,1,length.out=niter)
     optimize_res <- optimize_noise_sub(logexp, n[1], ncores)
     sapply(n[-1],
            function(x) optimize_res <<- cbind(optimize_res,
                                               optimize_noise_sub(logexp,x,ncores)))
+    colnames(optimize_res) <- as.character(n)
     return(optimize_res)
 }
 
@@ -328,8 +335,10 @@ plot_opti <- function(optimize_res) {
     optimize_num <- apply(optimize_res,2,sum,na.rm=TRUE)
     plot(as.numeric(colnames(optimize_res)),
          optimize_num,
-         ylab="total number of bimodal genes",
-         xlab="S.D.")
+         ylab="Number Of Identified Bimodal Genes",
+         xlab="S.D. of Introduced Noise")
+    lines(as.numeric(colnames(optimize_res)),
+         optimize_num, col="red")
     ## scatter.smooth(1:length(optimize_num),optimize_num,
     ##                lpars = list(col="red", lwd=3))
     ##                ## main=,
@@ -339,8 +348,13 @@ plot_opti <- function(optimize_res) {
 
 bootstrap_opti <- function(logexp, sd=0.1, nbootstrap=30, ncores=detectCores()-2) {
     n <- rep(sd,nbootstrap)
-    boostrap_res <- run_multi(logexp, n, ncores)
-    bootstrap_num <- apply(bootstrap_res,1,sum)/nbootstrap
+    bootstrap_res <- optimize_noise_sub(logexp, n[1], ncores)
+    sapply(n[-1],
+           function(x) bootstrap_res <<- cbind(bootstrap_res,
+                                              optimize_noise_sub(logexp,x,ncores)))
+    colnames(bootstrap_res) <- as.character(n)
+
+#    bootstrap_num <- apply(bootstrap_res,1,sum)/nbootstrap
     return(bootstrap_num)
 }
 
@@ -375,11 +389,14 @@ findcutoff <- function(exp) {
 
 binarizeexp <- function(exp) {
     cutoff <- findcutoff(exp)
-    return(exp > cutoff)
+    if (is.na(cutoff)) { return(NA) # TODO: need a warning for NA
+                     } else {
+    return(exp > cutoff) }
 }
 
 findratio <- function(exp,idxrange) {
     binexp <- binarizeexp(exp)[idxrange]
+    binexp <- binexp[!is.na(binexp)]
     if (all(binexp)) { # all ON
         return(c(0,1))
     } else if (all(!binexp)) { # all OFF
@@ -402,13 +419,45 @@ clusterratio <- function(exp, nclass) {
     return(cratio)
 }
 
-windowratio <- function(exp, wsize) {
-    cstart <- seq(1, length(exp), by=floor(length(exp)/wsize))
-    cend <- c(cstart[-1]-1,length(exp))
+window_per_cluster <- function(csize, wsize, cinit) {
+    # csize: size of cluster, wsize: size of window
+    cend <- cumsum(rep(wsize, csize%/%wsize))
+    if (rev(cend)[1] != csize) { cend <- c(cend, csize) }
+    cstart <- c(1, rev(rev(cend)[-1])+1)
+    clusterw <- data.frame("cstart"=cstart,"cend"=cend)
+    clusterw <- clusterw + cinit
+    return(clusterw)
+}
 
-    cratio <- t(sapply(1:wsize, function(x) findratio(exp, cstart[x]:cend[x])))
-    rownames(cratio) <- 1:wsize
+window_all_clusters <- function(nclass, wsize) {
+    clusterw <- window_per_cluster(nclass[1], wsize, 0)
+    invisible(sapply(1:length(nclass),
+           function(i)
+               clusterw <<- rbind(clusterw, window_per_cluster(nclass[i], wsize, cumsum(nclass)[i-1]))))
+           return(clusterw)
+}
+
+bin_clusters <- function(nclass,wsize) {
+    clusterw <- window_all_clusters(nclass,wsize)
+    b <- rep(1:length(nclass),
+             diff(c(0,which(sapply(clusterw$cend, function(x) x %in% cumsum(nclass))))))
+    return(b)
+}
+
+find_windowratio <- function(exp, clusterw) {
+    ## cstart <- seq(1, length(exp), by=floor(length(exp)/wsize))
+    ## cend <- c(cstart[-1]-1,length(exp))
+    cstart <- clusterw$cstart
+    cend <- clusterw$cend
+    cratio <- t(sapply(1:nrow(clusterw), function(x) findratio(exp, cstart[x]:cend[x])))
+    rownames(cratio) <- 1:nrow(clusterw)
     colnames(cratio) <- c("OFF","ON")
+    return(cratio)
+}
+
+windowratio <- function(exp, nclass, wsize) {
+    clusterw <- window_all_clusters(nclass, wsize)
+    cratio <- find_windowratio(exp, clusterw)
     return(cratio)
 }
 
