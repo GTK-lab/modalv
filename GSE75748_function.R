@@ -16,6 +16,7 @@ library(igraph)
 library(scatterplot3d) # optional
 library(ade4) # optional
 
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
 ############# Ensembl server is sometimes down. Prefer not to run this everytime.
 
@@ -70,7 +71,7 @@ p <- data.frame(x = mixmdl$x) %>%
                 colour = "red", lwd = 1.5) +
   stat_function(geom = "line", fun = plot_mix_comps,
                 args = list(mixmdl$mu[2], mixmdl$sigma[2], lam = mixmdl$lambda[2]),
-                colour = "blue", lwd = 1.5) + xlim(0,12.5) +
+                colour = "blue", lwd = 1.5) + xlim(0,12.5) + ylim(0, 1000) +
                     ylab("Density") +
                         ggtitle(paste0("mu is ",
                                        round(mixmdl$mu[1],digits=2),
@@ -80,7 +81,7 @@ p <- data.frame(x = mixmdl$x) %>%
                                        round(mixmdl$lambda[1],digits=2),
                                        ", ",
                                        round(mixmdl$lambda[2],digits=2))) +
-                                           theme_bw()
+                                           theme_bw() + ylim(0,0.5)
 return(p)
 }
 
@@ -148,7 +149,7 @@ return_density <- function(expvalue_sub,
 plot_time <- function(nclass,
                       expvalue,
                       gene) {
-    cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+    cbbPalette <- brewer.pal(6, "Dark2") #c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
     l <- length(nclass)
     c <- cumsum(nclass)
@@ -166,7 +167,11 @@ plot_time <- function(nclass,
                 aes(x=x, y=y, col=name)) +
                     geom_line() +
                         facet_wrap(~name,ncol=1) +
-                            scale_colour_manual(values=cbPalette)
+                            theme(
+                                strip.background = element_blank(),
+                                strip.text.x = element_blank()
+                                )+
+                            scale_colour_manual(values=brewer.pal(6, "Dark2")) + theme_bw()
 return(p)
     ## plot(density(expvalue[1:ncate[2]]),
 ##          col="black",xlim=c(-2,10),ylim=c(0,1),main=gene)
@@ -183,6 +188,7 @@ get_colors <- function(n) {
 
 color_check <- function(cols,
                         coldata) {
+    nclass <- table(coldata)
     barplot(rep(1,length(nclass)),
             col=cols,
             names.arg=unique(coldata),
@@ -214,13 +220,21 @@ test_bimodal <- function(exp) {
     return(a$p.value)
 }
 
+messup <- function(sc_cell, sd) {
+    # sc_cell must be in log scale
+    nnoise <- matrix(rnorm(nrow(sc_cell)*ncol(sc_cell),
+                           mean=0, sd=sd),ncol=ncol(sc_cell))
+    sc_cell_messup <- sc_cell+nnoise
+    return(sc_cell_messup)
+}
+
 fit_bimodal <- function(exp,
                         name) {
 
     tryCatch(mixmdl <- normalmixEM(exp,
-                                   k=2,
-                                   mu=c(0,6),
-                                   maxit = 100),
+                                   k=3,
+                                   mu=c(0,2,6),
+                                   maxit = 1000),
              error=function(e){NA})
     
     if (!exists("mixmdl")) {
@@ -233,39 +247,31 @@ fit_bimodal <- function(exp,
     } else {
         df <- data.frame("gene"=name,
                          "mu1"=mixmdl$mu[1],
-                         "mu2"=mixmdl$mu[2],
+                         "mu2"=mixmdl$mu[3],
                          "lambda1"=mixmdl$lambda[1],
-                         "lambda2"=mixmdl$lambda[2],
-                         "converge"=rev(mixmdl$all.loglik)[1] == rev(mixmdl$all.loglik)[2] )
+                         "lambda2"=mixmdl$lambda[3],
+                         "converge"=round(rev(mixmdl$all.loglik)[1],3) == round(rev(mixmdl$all.loglik)[2],3) )
    }
 
 return(df)
 }
 
-messup <- function(sc_cell, sd) {
-    # sc_cell must be in log scale
-    nnoise <- matrix(rnorm(nrow(sc_cell)*ncol(sc_cell),
-                           mean=0, sd=sd),ncol=ncol(sc_cell))
-    sc_cell_messup <- sc_cell+nnoise
-    return(sc_cell_messup)
-}
-
 fit_bimodal_multi <- function(logexp_messup,
                               ncores=detectCores()-2) {
 
-cl <- makeCluster(ncores) # create a cluster with max-2 cores
-registerDoParallel(cl) # register the cluster
+    cl <- makeCluster(ncores) # create a cluster with max-2 cores
+    registerDoParallel(cl) # register the cluster
 
-res_tpm = foreach(i = 1:nrow(logexp_messup),
-    .combine = "rbind",
-    .packages = "mixtools",
-    .export = c("fit_bimodal"))     %dopar% {
-  # generate a bootstrap sample              
-        fit_bimodal(logexp_messup[i,],rownames(logexp_messup)[i])
-}
+    res_tpm = foreach(i = 1:nrow(logexp_messup),
+        .combine = "rbind",
+        .packages = "mixtools",
+        .export = c("fit_bimodal")) %dopar% {
+                                        # generate a bootstrap sample              
+            fit_bimodal(logexp_messup[i,],rownames(logexp_messup)[i])
+        }
 
-stopCluster(cl) # shut down the cluster
-return(res_tpm)
+    stopCluster(cl) # shut down the cluster
+    return(res_tpm)
 }
 
 fit_bimodal_one <- function(logexp_messup) {
@@ -364,7 +370,7 @@ filter_condition <- function(res_diptest,
                              cond_lambda=0.7,
                              cond_mu=1) {
 
-    condition <- (res_diptest <= cond_dip) &
+    condition <- (res_diptest <= cond_dip) & 
         sapply(1:nrow(res_tpm),
                function(i) min(res_tpm[i,]$mu1,
                                res_tpm[i,]$mu2) <= cond_mu) &
