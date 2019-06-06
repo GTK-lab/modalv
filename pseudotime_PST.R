@@ -25,7 +25,7 @@ mclass <- sc_time_coldata$exp
 nclass <- table(mclass)
 cols <- get_colors(nclass)
 
-set.seed(100)
+
 
 bimocondition[is.na(bimocondition)] <- FALSE
 
@@ -42,6 +42,7 @@ library("ggplot2")
 
 binmat <- log_sc_time_tpm_messup_bin[!is.na(log_sc_time_tpm_messup_bin[,1]),]
 
+set.seed(100)
 tsne_out_bi <- Rtsne(t(unique(binmat[rownames(binmat) %in%names(bimocondition_bi)[bimocondition_bi],])),
                   pca=FALSE,
                   perplexity=30,
@@ -70,11 +71,15 @@ tsne2 <- ggplot(data=data.frame("C1"=tsne_out_bi$Y[,1],
        aes(C1,C2,col=type)) +
     geom_point() + theme_bw() + scale_color_manual(values=cols) + ggtitle("6 clusters generated")
 
-save.image("20190601.RData")
+
+
+library(gridExtra)
 
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_tsne.pdf",    width=5, height=8)
 grid.arrange(tsne1_bi, tsne2)
 dev.off()
+
+save.image("20190601.RData")
 
 # binarize
 
@@ -366,9 +371,9 @@ C3.pst <- build_PST(cluster3_order_from2, 3, n=100,
                     cluster_orders2=cluster3_order_from4)
 C4.pst <- build_PST(cluster4_order_from3, 4, n=100,
                     cluster_orders2=cluster4_order_from5)
-C5.pst <- build_PST(cluster5_order_from4, 5, n=100,
-                    cluster_orders2=cluster5_order_from6)
-C6.pst <- build_PST(cluster6_order, 6, n=100)
+## C5.pst <- build_PST(cluster5_order_from4, 5, n=100,
+##                     cluster_orders2=cluster5_order_from6)
+## C6.pst <- build_PST(cluster6_order, 6, n=100)
 
 C5_6.pst <- build_PST(cluster5_order, c(5,6), n=100)
 
@@ -385,59 +390,69 @@ sum(vertices==vertices[1])/length(vertices),
 
     return(c.gen) }
 
-C1.gen <- do.call( rbind,
-                   replicate(10,
-                             generate_pst(C1.pst,
-                                          from1to2[1:100,3],
-                                          1),
-                             simplify=FALSE))
+library(foreach)
+library(doParallel)
 
-C2.gen <- do.call(rbind,
-                  replicate(10,
-                            generate_pst(C2.pst,
-                                         c(generate_pairorders(cluster2_order_from1, n=100)[,1],
-                                           generate_pairorders(cluster2_order_from3, n=100)[,as.numeric(nclass_cluster[2])]),
-                                         2),
-                                         simplify=FALSE))
+repeat_gen <- function(c.pst, vertices, cluster, nr, np=50) {
+registerDoParallel(np)  # use multicore, set to the number of our cores
+c.gen <- foreach (i=1:nr, .combine=rbind) %dopar% {
+    cat(i,"\n")
+    generate_pst(c.pst, vertices, cluster) }
+return(c.gen)
+}
 
-C3.gen <- do.call(rbind,
-                  replicate(10,
-                            generate_pst(C3.pst,
-                                         c(generate_pairorders(cluster3_order_from2, n=100)[,1],
-                                           generate_pairorders(cluster3_order_from4, n=100)[,as.numeric(nclass_cluster[3])]),
-                                         3),
-                                         simplify=FALSE))
+C1.gen <- repeat_gen(C1.pst, from1to2[1:100,3],1,10,10)
+C2.gen <- repeat_gen(C2.pst,
+                     c(generate_pairorders(cluster2_order_from1,
+                                           n=100)[,1],
+                       generate_pairorders(cluster2_order_from3,n=100)[,as.numeric(nclass_cluster[2])]),
+                     2,
+                     10,
+                     10)
 
-C4.gen <- do.call(rbind,
-                  replicate(10,
-                            generate_pst(C4.pst,
-                                         c(generate_pairorders(cluster4_order_from3, n=100)[,1],
-                                           generate_pairorders(cluster4_order_from5, n=100)[,as.numeric(nclass_cluster[4])]),
-                                         4),
-                                         simplify=FALSE))
+C3.gen <- repeat_gen(C3.pst,
+                     c(generate_pairorders(cluster3_order_from2, n=100)[,1],
+                       generate_pairorders(cluster3_order_from4, n=100)[,as.numeric(nclass_cluster[3])]),
+                     3,
+                     10,
+                     10)
 
-## C5.gen <- do.call(rbind,
-##                   replicate(10,
-##                             generate_pst(C5.pst,
-##                                          c(generate_pairorders(cluster5_order_from4, n=100)[,1],
-##                                            generate_pairorders(cluster5_order_from6, n=100)[,as.numeric(nclass_cluster[5])]),
-##                                          5),
-##                                          simplify=FALSE))
+C4.gen <- repeat_gen(C4.pst,
+                     c(generate_pairorders(cluster4_order_from3, n=100)[,1],
+                       generate_pairorders(cluster4_order_from5, n=100)[,as.numeric(nclass_cluster[4])]),
+                     4,
+                     10,
+                     10)
 
-## C6.gen <- do.call( rbind,
-##                    replicate(10,
-##                              generate_pst(C6.pst,
-##                                           from5to6[1:100,4],
-##                                           6),
-##                              simplify=FALSE))
+C5_6.gen <- repeat_gen(C5_6.pst,
+                       from4to5[1:100,4],
+                       c(5,6),
+                       10,
+                       10)
 
-C5_6.gen <- do.call(rbind,
-                    replicate(10,
-                              generate_pst(C5_6.pst,
-                                           from4to5[1:100,4],
-                                           c(5,6)),
-                              simplify=FALSE))
-                                         
+
+## run_generate_pst <- function(c.pst,
+##                              vertices,
+##                              cluster,
+##                              maxn=10) {
+##     c.gen <- as.numeric(generate_pst(c.pst,
+##                                      vertices,
+##                                      cluster))
+
+##     repeat {
+##         c.gen <- rbind(c.gen,
+##                        generate_pst(c.pst,
+##                                     vertices,
+##                                     cluster))
+##         bcon <-  !any(duplicated(as.numeric(c.gen[nrow(c.gen),])))
+##         if((nrow(c.gen)>=maxn)|(bcon)) { break }}
+##     return(c.gen[!any(duplicated(as.numeric(c.gen[nrow(c.gen),]))),]) }
+
+get_unique_order <- function(c.gen) {
+    return(as.numeric(c.gen[which(apply(c.gen, 1, function(x) sum(duplicated(x))) == 0)[1],]))
+}
+
+
 
 which(apply(C5_6.gen, 1, function(x) sum(duplicated(x)))==0)
 
