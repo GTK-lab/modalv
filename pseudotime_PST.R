@@ -13,6 +13,7 @@ log_sc_time_tpm <- log(sc_time_tpm+1)
 log_sc_time_tpm_messup <- messup(log_sc_time_tpm, 1e-05)
 log_sc_time_tpm_messup_bimodal <- apply(log_sc_time_tpm_messup, 1, test_bimodal)
 
+set.seed(100)
 bimofit <- fit_bimodal_multi(log_sc_time_tpm_messup,ncores=50)
 
 bimocondition <- filter_condition(log_sc_time_tpm_messup_bimodal,
@@ -20,14 +21,12 @@ bimocondition <- filter_condition(log_sc_time_tpm_messup_bimodal,
                                   cond_dip=0.01,
                                   cond_lambda=1,
                                   cond_mu=1)
+bimocondition[is.na(bimocondition)] <- FALSE
 
 mclass <- sc_time_coldata$exp
 nclass <- table(mclass)
 cols <- get_colors(nclass)
 
-
-
-bimocondition[is.na(bimocondition)] <- FALSE
 
 bimocondition_bi <- (rownames(log_sc_time_tpm) %in% bigenes) & bimocondition
 bimocondition_k4 <- (rownames(log_sc_time_tpm) %in% k4genes) & bimocondition
@@ -60,6 +59,7 @@ rownames(rd1) <- mclass
 library(mclust)
 
 cl1 <- Mclust(rd1,6)$classification
+nclass_cluster <- table(cl1)
 ## cl1[cl1==4] <- 6
 ## cl1[cl1==5] <- 4
 ## cl1[cl1==6] <- 5
@@ -75,11 +75,12 @@ tsne2 <- ggplot(data=data.frame("C1"=tsne_out_bi$Y[,1],
 
 library(gridExtra)
 
-pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_tsne.pdf",    width=5, height=8)
+pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_tsne.pdf",
+    width=5, height=8)
 grid.arrange(tsne1_bi, tsne2)
 dev.off()
 
-save.image("20190601.RData")
+#save.image("20190601.RData")
 
 # binarize
 
@@ -161,61 +162,26 @@ mim_cell <- sapply(1:ncol(hmat_bin),
 colnames(mim_cell) <- colnames(hmat_bin)
 rownames(mim_cell) <- colnames(hmat_bin)
 
-mim_gene <- sapply(1:nrow(hmat_bin),
-                   function(x) get_mi(hmat_bin, x))
-colnames(mim_gene) <- rownames(hmat_bin)
-rownames(mim_gene) <- rownames(hmat_bin)
-
 # conditional entropy matrix as distance between cells
 mim_cell_var <- sapply(1:ncol(hmat_bin),
                    function(x) get_var(t(hmat_bin), x))
 colnames(mim_cell_var) <- colnames(hmat_bin)
 rownames(mim_cell_var) <- colnames(hmat_bin)
 
+mim_gene <- sapply(1:nrow(hmat_bin),
+                   function(x) get_mi(hmat_bin, x))
+colnames(mim_gene) <- rownames(hmat_bin)
+rownames(mim_gene) <- rownames(hmat_bin)
 
-
-## get_dpt <- function(cluster) {
-##     covars <- data.frame("cells"=colnames(mim_cell)[cl1%in%cluster])
-##     dm <- DiffusionMap(covars,                       distance=as.dist(mim_cell_var[cl1%in%cluster, cl1%in%cluster]))
-##     dpt <- DPT(dm)
-##     return(dpt)
-## }
-
-nclass_cluster <- table(cl1)
-
-
-
-## ### within cluster order
-
-## find_neig_tips <- function(mim_tips) {
-##     mim_tips_m <- melt(mim_tips)
-##     df <- mim_tips_m[order(mim_tips_m$value,decreasing=TRUE)[1:2],]
-## #    which(colnames(mim_cell)==find_neig_tips(mim_tip_00_12)[1])
-##     return(df)
-## }
-
-## mim_tip_2 <- mim_cell[tips(dpt_2)+cumsum(nclass_cluster)[1],
-##                       tips(dpt_3)+cumsum(nclass_cluster)[3]]
-## mim_tip_3 <- mim_cell[tips(dpt_3)+cumsum(nclass_cluster)[3],
-##                       tips(dpt_4)+cumsum(nclass_cluster)[3]]
-## #mim_tip_4_5 <- mim_cell[tips(dpt_4)+cumsum(nclass_cluster)[3], tips(dpt_5)+cumsum(nclass_cluster)[4]]
-
-
-## tips_list <- list(find_neig_tips(mim_tip_2),
-##                   find_neig_tips(mim_tip_3))
- 
-
-## ctips <- c("H9.24h_034", "H9.36h_128", "H9.36h_059","H9.36h_119")
-
-## order_1 <- order(as.numeric(mim_cell[cl1==1,"H9.24h_034"]),decreasing=TRUE) # use how similar the cell is to the next tip and order in decreasing order
-## order_2 <- order(dpt_2@dm@eigenvectors[,1],decreasing=FALSE)
-## order_3 <- order(dpt_3@dm@eigenvectors[,1],decreasing=FALSE)
+# conditional entropy matrix as distance between genes
+mim_gene_var <- sapply(1:nrow(hmat_bin),
+                   function(x) get_var(hmat_bin, x))
+colnames(mim_gene_var) <- rownames(hmat_bin)
+rownames(mim_gene_var) <- rownames(hmat_bin)
 
 
 
-## cellorder <- c(order_1,
-##                order_2+cumsum(nclass_cluster)[1],
-##                order_3+cumsum(nclass_cluster)[3])
+
 
 ################### pseudotime ordering based on PST
 
@@ -318,32 +284,6 @@ generate_pairorders <- function(cluster_orders, n=100, cluster_orders2) {
 
 }
 
-## fix_pos <- function(ordered_cells_all, n=1000) {
-##     pos <-    apply(ordered_cells_all, 2,
-##           function(x)
-##               names(table(x)[which.max(table(x))]))
-##     fixed_pos <- as.numeric(names(which(table(pos)==1)))
-##     cellID <- seq(1,ncol(ordered_cells_all))
-##     cellsequence <- data.frame(cellID,
-##                                order=pos, stringsAsFactors=FALSE)
-##     cellsequence$order[!pos%in%fixed_pos] <- NA
-
-## cellsequence_shuffled <-  do.call( rbind,
-##             replicate(n, shuffle_orders(cellsequence),
-##                                          simplify=FALSE))
-## return(cellsequence_shuffled)
-        
-## }
-
-## shuffle_orders <- function(cellsequence) {
-## df <- data.frame(cellID=cellsequence$cellID[is.na(cellsequence$order)],
-##                  order=sample(c(1:nrow(cellsequence))[!1:length(cellID) %in% cellsequence$order]), stringsAsFactors=FALSE)
-
-## df_shuffled <- rbind(cellsequence[!is.na(cellsequence$order),],
-##                      df)
-
-## return(as.numeric(df_shuffled$order))
-## }
 
 from1to2 <- get_connectingpair(1,2)
 from2to3 <- get_connectingpair(2,3)
@@ -358,9 +298,6 @@ cluster3_order_from2 <- t(sapply(from2to3$tocell, function(x) get_cellorder(x,3)
 cluster3_order_from4 <- t(sapply(from3to4$fromcell, function(x) rev(get_cellorder(x,3))))
 cluster4_order_from3 <- t(sapply(from3to4$tocell, function(x) get_cellorder(x,4)))
 cluster4_order_from5 <- t(sapply(from4to5$fromcell, function(x) rev(get_cellorder(x,4))))
-## cluster5_order_from4 <- t(sapply(from4to5$tocell, function(x) get_cellorder(x,5)))
-## cluster5_order_from6 <- t(sapply(from5to6$fromcell, function(x) get_cellorder(x,5)))
-## cluster6_order <- t(sapply(from5to6$tocell, function(x) get_cellorder(x,6)))
 cluster5_order <- t(sapply(from4to5$tocell, function(x) get_cellorder(x,c(5,6))))
 
 
@@ -371,10 +308,6 @@ C3.pst <- build_PST(cluster3_order_from2, 3, n=100,
                     cluster_orders2=cluster3_order_from4)
 C4.pst <- build_PST(cluster4_order_from3, 4, n=100,
                     cluster_orders2=cluster4_order_from5)
-## C5.pst <- build_PST(cluster5_order_from4, 5, n=100,
-##                     cluster_orders2=cluster5_order_from6)
-## C6.pst <- build_PST(cluster6_order, 6, n=100)
-
 C5_6.pst <- build_PST(cluster5_order, c(5,6), n=100)
 
 generate_pst <- function(c.pst, vertices, cluster) {
@@ -401,69 +334,46 @@ c.gen <- foreach (i=1:nr, .combine=rbind) %dopar% {
 return(c.gen)
 }
 
-C1.gen <- repeat_gen(C1.pst, from1to2[1:100,3],1,10,10)
+C1.gen <- repeat_gen(C1.pst, from1to2[1:100,3],1,50,50)
 C2.gen <- repeat_gen(C2.pst,
                      c(generate_pairorders(cluster2_order_from1,
                                            n=100)[,1],
                        generate_pairorders(cluster2_order_from3,n=100)[,as.numeric(nclass_cluster[2])]),
                      2,
-                     10,
-                     10)
+                     50,
+                     50)
 
 C3.gen <- repeat_gen(C3.pst,
                      c(generate_pairorders(cluster3_order_from2, n=100)[,1],
                        generate_pairorders(cluster3_order_from4, n=100)[,as.numeric(nclass_cluster[3])]),
                      3,
-                     10,
-                     10)
+                     50,
+                     50)
 
 C4.gen <- repeat_gen(C4.pst,
                      c(generate_pairorders(cluster4_order_from3, n=100)[,1],
                        generate_pairorders(cluster4_order_from5, n=100)[,as.numeric(nclass_cluster[4])]),
                      4,
-                     10,
-                     10)
+                     50,
+                     50)
 
 C5_6.gen <- repeat_gen(C5_6.pst,
                        from4to5[1:100,4],
                        c(5,6),
-                       10,
-                       10)
-
-
-## run_generate_pst <- function(c.pst,
-##                              vertices,
-##                              cluster,
-##                              maxn=10) {
-##     c.gen <- as.numeric(generate_pst(c.pst,
-##                                      vertices,
-##                                      cluster))
-
-##     repeat {
-##         c.gen <- rbind(c.gen,
-##                        generate_pst(c.pst,
-##                                     vertices,
-##                                     cluster))
-##         bcon <-  !any(duplicated(as.numeric(c.gen[nrow(c.gen),])))
-##         if((nrow(c.gen)>=maxn)|(bcon)) { break }}
-##     return(c.gen[!any(duplicated(as.numeric(c.gen[nrow(c.gen),]))),]) }
+                       50,
+                       50)
 
 get_unique_order <- function(c.gen) {
     return(as.numeric(c.gen[which(apply(c.gen, 1, function(x) sum(duplicated(x))) == 0)[1],]))
 }
 
-
-
-which(apply(C5_6.gen, 1, function(x) sum(duplicated(x)))==0)
+C1.order <- get_unique_order(C1.gen)
+C2.order <- get_unique_order(C2.gen)
+C3.order <- get_unique_order(C3.gen)
+C4.order <- get_unique_order(C4.gen)
+C5_6.order <- get_unique_order(C5_6.gen)
 
 C1.order <- predicted_order(C1.pst, generate_pairorders(cluster1_order), 1)
-
-C2.order <- as.numeric(C2.gen[which(apply(C2.gen, 1, function(x) sum(duplicated(x)))==0)[1],])
-C3.order <- as.numeric(C3.gen[which(apply(C3.gen, 1, function(x) sum(duplicated(x)))==0)[1],])
-C4.order <- as.numeric(C4.gen[which(apply(C4.gen, 1, function(x) sum(duplicated(x)))==0)[1],])
-## C5.order <- as.numeric(C5.gen[which(apply(C5.gen, 1, function(x) sum(duplicated(x)))==0)[1],])
-## C6.order <- as.numeric(C6.gen[which(apply(C6.gen, 1, function(x) sum(duplicated(x)))==0)[1],])
-C5_6.order <- as.numeric(C5_6.gen[which(apply(C5_6.gen,1,function(x) sum(duplicated(x)))==0)[1],])
 
 cellorder <- c(C1.order,
                C2.order+cumsum(nclass_cluster)[1],
@@ -499,7 +409,7 @@ colnames(hmat) <- colnames(log_sc_time_tpm)
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/compare_cellorder.pdf",
 width=10, height=10)
 
-heatmap.2(hmat_bin[,cellorder],
+gplots::heatmap.2(hmat_bin[,cellorder],
           trace="none",
 ColSideColors=cols[sc_time_coldata$exp][cellorder],
                                         #as.numeric(a))],#cols[cl1][order(cl1)],
@@ -510,6 +420,7 @@ ColSideColors=cols[sc_time_coldata$exp][cellorder],
           )
 
 dev.off()
+
 
 
 #########################3 HMM
@@ -573,6 +484,7 @@ hmat_bin_cellorder <- hmat_bin[,cellorder]
 vit_df <- data.frame(sapply(1:nrow(hmat_bin_cellorder),
                             function(x) run_viterbi(hmat_bin_cellorder[x,],
                                                     rownames(hmat_bin_cellorder)[x])))
+
 vit_df_path <- data.frame(sapply(1:nrow(hmat_bin_cellorder),
                             function(x) run_viterbi_path(hmat_bin_cellorder[x,],
                                                     rownames(hmat_bin_cellorder)[x])))
@@ -798,7 +710,7 @@ plot_hmap <- function(myhmap, dofacet=TRUE) {
                                                                    legend.position="none") +
                                                                        xlab("Pseudotime Ordered Cells")+                                        scale_x_discrete(position = "top") + ylab("Genes")
     if (dofacet) {
-        p +  facet_grid(
+        p <- p +  facet_grid(
             scales="free",
             space="free",
             rows=vars(gorder)) }
@@ -809,18 +721,18 @@ return(p)
 
 ## x <- get_hmap(as.character(gwhen[,"gene"]),t(vit_mat), "switch_group")
 ## x2 <-  get_hmap(as.character(gwhen[,"gene"]),t(vit_mat), "change_window")
-
-
+library(RColorBrewer)
+library(reshape2)
 hmap <- get_hmap(unique(gwhen$gene), hmat[,cellorder], "switch_group")
 hmap_bin <- get_hmap(unique(gwhen$gene), hmat_bin_cellorder, "switch_group")
 hmap_hmm <- get_hmap(unique(gwhen$gene), t(vit_mat), "switch_group")
 hmap_bulk <- get_hmap(unique(gwhen$gene), log(as.matrix(bulk_time_ave)+1,10), "switch_group", bulk=TRUE)
 
 
-p <- plot_hmap(hmap)
-p_bin <- plot_hmap(hmap_bin)
-p_hmm <- plot_hmap(hmap_hmm)
-p_bulk <- plot_hmap(hmap_bulk)
+p <- plot_hmap(hmap, TRUE)
+p_bin <- plot_hmap(hmap_bin, TRUE)
+p_hmm <- plot_hmap(hmap_hmm, TRUE)
+p_bulk <- plot_hmap(hmap_bulk, TRUE)
 
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_switch.pdf",
 width=20, height=50)
@@ -1352,7 +1264,7 @@ library(scales)
 plot_fraction <- function(gene) {
 
 d <- as.numeric(log_sc_time_tpm_messup_bin[gene,cellorder])
-d <- unlist(lapply(split(d, ceiling(seq_along(d)/20)),
+d <- unlist(lapply(split(d, ceiling(seq_along(d)/10)),
        function(x)
            sum(x)/length(x)))
 
@@ -1391,23 +1303,23 @@ return(q)
 
 }
 
-## plot_thmm <- function(gene) {
-## d1 <- vit_mat_path[,gene]
+plot_thmm <- function(gene) {
+d1 <- vit_mat_path[,gene]
 
-## df <- data.frame("hmm_path"=unlist(split(d1, ceiling(seq_along(d1)/130))),
-##                  "cwindow"=rep(1:6, lapply(split(d1, ceiling(seq_along(d1)/130)), length)),
-##                  "cells"=unlist(lapply(split(d1, ceiling(seq_along(d1)/130)), function(x) 1:length(x))))
+df <- data.frame("hmm_path"=unlist(split(d1, ceiling(seq_along(d1)/130))),
+                 "cwindow"=rep(1:6, lapply(split(d1, ceiling(seq_along(d1)/130)), length)),
+                 "cells"=unlist(lapply(split(d1, ceiling(seq_along(d1)/130)), function(x) 1:length(x))))
 
-## q <- ggplot(df, aes(y=cells, x=hmm_path, col=hmm_path, fill=hmm_path)) +
-##     geom_bar(position="dodge",stat="identity") + theme_classic() +
-##         theme(strip.background = element_blank(),
-##               strip.text.y = element_blank(),
-##               legend.position="none") + facet_grid(                          scales="free",
-##                           space="free",cols=vars(cwindow)) + scale_fill_grey(start=0.8, end=0.2)+  scale_color_grey(start=0.8, end=0.2)  
+q <- ggplot(df, aes(y=cells, x=hmm_path, col=hmm_path, fill=hmm_path)) +
+    geom_bar(position="dodge",stat="identity") + theme_classic() +
+        theme(strip.background = element_blank(),
+              strip.text.y = element_blank(),
+              legend.position="none") + facet_grid(                          scales="free",
+                          space="free",cols=vars(cwindow)) + scale_fill_grey(start=0.8, end=0.2)+  scale_color_grey(start=0.8, end=0.2)  
 
-## return(q)
+return(q)
 
-## }
+}
 
 
 
@@ -1415,10 +1327,10 @@ pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_example.pdf",width=10, height
 
 grid.arrange(plot_fraction("PITX2"),
 #             plot_fraction("LPGAT1"),
-             plot_fraction("EOMES"),
+#             plot_fraction("EOMES"),
              plot_twindow("PITX2"),
 #             plot_twindow("LPGAT1"),
-             plot_twindow("EOMES"),
+#             plot_twindow("EOMES"),
              plot_fraction("PMAIP1"),
 #             plot_fraction("KLF10"),
              plot_fraction("FOXH1"),

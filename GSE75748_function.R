@@ -1,9 +1,8 @@
 ## for mixed model
 library(diptest)
 library(mixtools)
-## for visualization
-library(dplyr)
-library(ggplot2)
+## for data manipulation & visualization
+library(tidyverse)
 library(gridExtra)
 library(gplots)
 library(RColorBrewer)
@@ -230,7 +229,6 @@ messup <- function(sc_cell, sd) {
 
 fit_bimodal <- function(exp,
                         name) {
-
     tryCatch(mixmdl <- normalmixEM(exp,
                                    k=3,
                                    mu=c(0,2,6),
@@ -238,23 +236,46 @@ fit_bimodal <- function(exp,
              error=function(e){NA})
     
     if (!exists("mixmdl")) {
-        df <- data.frame("gene"=NA,
-                         "mu1"=NA,
-                         "mu2"=NA,
-                         "lambda1"=NA,
-                         "lambda2"=NA,
-                         "converge"=NA)
+
+        tryCatch(mixmdl2 <- normalmixEM(exp,
+                                       k=2,
+                                       mu=c(0,6),
+                                       maxit = 1000),
+                 error=function(e){NA})
+        if (!exists("mixmdl2")) {
+            df <- data.frame("gene"=NA,
+                             "mu1"=NA,
+                             "mu2"=NA,
+                             "mu3"=NA,
+                             "lambda1"=NA,
+                             "lambda2"=NA,
+                             "lambda3"=NA,
+                             "converge"=NA)
+        } else {
+            df <- data.frame("gene"=name,
+                             "mu1"=mixmdl2$mu[1],
+                             "mu2"=mixmdl2$mu[2],
+                             "mu3"=NA,
+                             "lambda1"=mixmdl2$lambda[1],
+                             "lambda2"=mixmdl2$lambda[2],
+                             "lambda3"=NA,
+                             "converge"=round(rev(mixmdl2$all.loglik)[1],3) == round(rev(mixmdl2$all.loglik)[2],3) )
+        }
     } else {
         df <- data.frame("gene"=name,
                          "mu1"=mixmdl$mu[1],
-                         "mu2"=mixmdl$mu[3],
+                         "mu2"=mixmdl$mu[2],
+                         "mu3"=mixmdl$mu[3],
                          "lambda1"=mixmdl$lambda[1],
-                         "lambda2"=mixmdl$lambda[3],
+                         "lambda2"=mixmdl$lambda[2],
+                         "lambda3"=mixmdl$lambda[3],
                          "converge"=round(rev(mixmdl$all.loglik)[1],3) == round(rev(mixmdl$all.loglik)[2],3) )
    }
 
 return(df)
 }
+
+
 
 fit_bimodal_multi <- function(logexp_messup,
                               ncores=detectCores()-2) {
@@ -373,10 +394,14 @@ filter_condition <- function(res_diptest,
     condition <- (res_diptest <= cond_dip) & 
         sapply(1:nrow(res_tpm),
                function(i) min(res_tpm[i,]$mu1,
-                               res_tpm[i,]$mu2) <= cond_mu) &
+                               res_tpm[i,]$mu2,
+                               res_tpm[i,]$mu3,
+                               na.rm=TRUE) <= cond_mu) &
                    sapply(1:nrow(res_tpm),
                           function(i) max(res_tpm[i,]$mu1,
-                                          res_tpm[i,]$mu2) > cond_mu)  &
+                                          res_tpm[i,]$mu2,
+                                          res_tpm[i,]$mu3,
+                                          na.rm=TRUE) > cond_mu)  &
                               sapply(1:nrow(res_tpm),
                                      function(i) res_tpm[i,]$lambda1 <= cond_lambda)
     return(condition)
