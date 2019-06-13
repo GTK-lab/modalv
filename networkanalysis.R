@@ -1,3 +1,34 @@
+setwd("~/projects/bivalent/modalv/")
+source("GSE75748_data.R")
+source("GSE75748_function.R")
+source("pseudotime_function.R")
+
+# load processed data
+load("files/sc_time_basic.RData")
+load("files/sc_time_tsne.RData")
+load("files/hmmcondition_matrix.RData")
+load("files/log_sc_time_tpm_messup_bin.RData")
+load("files/mim.RData")
+load("files/cellorder-1.RData")
+load("files/cellorder-2.RData")
+load("files/cellorder-3.RData")
+load("files/cellorder-4.RData")
+load("files/viterbi.RData")
+load("files/bulk_time_ave.RData")
+load("files/hmap.RData")
+#load("files/20190615.RData")
+
+library("ggplot2")
+library(gridExtra)
+library(Rgraphviz)
+library(RColorBrewer)
+library(reshape2)
+
+mclass <- sc_time_coldata$exp
+nclass <- table(mclass)
+cols <- get_colors(nclass)
+
+
 ################ network analysis
 
 change_edge_dir <- function(edge) {
@@ -68,21 +99,23 @@ change_edge_weight_mi <- function(edge) {
 }
 
 ############# find connectors
-mim_con <- mim_gene[colnames(mim_gene) %in% downstream,
+mim_con <- mim_gene_var[colnames(mim_gene) %in% downstream,
                     !colnames(mim_gene) %in% downstream]
 
-connectors <- unique(unlist(apply(mim_con, 1, function(x) names(which(x>=0.1)))))
-connectors <- connectors[connectors %in% colnames(vit_mat)]
-connectors <- connectors[!connectors %in% as.character(unique(gsa_mat_m_overlap$gene))]
+connectors <- unique(unlist(apply(mim_con, 1, function(x) names(which(x<0.3)))))
+## connectors <- connectors[connectors %in% colnames(vit_mat)]
+## connectors <- connectors[!connectors %in% as.character(unique(gsa_mat_m_overlap$gene))]
 
 
 
 
-mim_genes <- unique(c(downstream[downstream %in% rownames(mim_gene)], connectors))
+
+mim_genes <- c(downstream,connectors)
+
+
 
 mim <- mim_gene[mim_genes, mim_genes]
-#mim <- mim_gene[unique(c(geneslist,"SP8","WNT5A","FOS","GATA3","COL1A2","GSC","WLS","GATA6")),
- #               unique(c(geneslist,"SP8","WNT5A","FOS","GATA3","COL1A2","GSC","WLS","GATA6"))]
+for (i in 1:nrow(mim)) { mim[i,i] <- 0 }
 net2_o <- aracne(mim)
 mygraph_mim <- as(net2_o ,"graphNEL")
 
@@ -104,10 +137,10 @@ names(gvec) <- gdf$gene
 
 gcolors <- brewer.pal(5,"Set3")
 gcolor_df <- data.frame(name=c(mim_genes), col="white", stringsAsFactors=FALSE)
-gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[1]]]<- gcolors[1]
-gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[2]]]<- gcolors[2]
-gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[3]]]<- gcolors[3]
-gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[4]]]<- gcolors[4]
+## gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[1]]]<- gcolors[1]
+## gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[2]]]<- gcolors[2]
+## gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[3]]]<- gcolors[3]
+## gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[4]]]<- gcolors[4]
 
 
 
@@ -117,8 +150,8 @@ gcolor_df$col[gcolor_df$name %in% pathway_downstream_l[[4]]]<- gcolors[4]
 
 nAttrs <- list()
 
-nAttrs$fillcolor <- as.character(gcolor_df$col)
-names(nAttrs$fillcolor) <- gcolor_df$name
+## nAttrs$fillcolor <- as.character(gcolor_df$col)
+## names(nAttrs$fillcolor) <- gcolor_df$name
 nAttrs$fontsize <- rep(20, length(c(mim_genes)))
 names(nAttrs$fontsize) <- c(mim_genes)
 nAttrs$size <- rep(1, length(c(mim_genes)))
@@ -217,6 +250,11 @@ dev.off()
 
 
 ##################################### gsa analysis
+
+### convert . to - for GSA search
+## cat(gsub("[.]","-",colnames(vit_mat)))
+## 1010 submitted, 985 mapped
+
 gsa_res <- read.table("/mnt/gtklab01/ahjung/bivalent/results/GSA/sc_time_bik27_notk4_KEGG_q0.001_all.csv",
                       fill=TRUE, sep="\t" ,header=FALSE,skip=9,nrows=51)
 gsa_res <- gsa_res[-1,1:7]
@@ -226,11 +264,13 @@ gsa_mat <- read.table("/mnt/gtklab01/ahjung/bivalent/results/GSA/sc_time_bik27_n
                       fill=TRUE, sep="\t" ,header=TRUE,skip=64,nrows=1200, stringsAsFactors=FALSE, quote="")
 
 #pathways <- colnames(gsa_mat)[1:32][grep("SIGNALING", colnames(gsa_mat)[1:32])]
-pathways <- colnames(gsa_mat)[unique(c(grep("PATHWAY", colnames(gsa_mat)),
+pathways <- colnames(gsa_mat)[unique(c(grep("PATHWAY$", colnames(gsa_mat)),
                                        grep("SIGNALING", colnames(gsa_mat)),
-                                       grep("PATHWAY",colnames(gsa_mat)),
                                        grep("ADHESION", colnames(gsa_mat)),
+                                                                              grep("IMMUNE", colnames(gsa_mat)),
                                        grep("MATRISOME", colnames(gsa_mat))))]
+
+pathways <-pathways[c(1,2,3,6,7,9,10,11,21,22,28,27,30)]
 
 
 gsa_mat_tf <- gsa_mat[,pathways] != ""
@@ -246,7 +286,7 @@ gsa_mat_m_overlap <- merge(gsa_mat_m,
 colnames(gsa_mat_m_overlap) <- c("gene","pathway","value","overlap")
 
 
-x2 <-  get_hmap(as.character(gwhen[,"gene"]),t(vit_mat), "switch_group")
+x2 <-  get_hmap(as.character(gwhen[,"gene"]),t(vit_mat), "change_window")
 
 gsa_hmap <- x2[x2$gene %in% colnames(vit_mat)[colnames(vit_mat) %in% as.character(unique(gsa_mat_m$Var1))],]
 
@@ -260,31 +300,30 @@ gsa_mat_m_overlap <- gsa_mat_m_overlap[!is.na(gsa_mat_m_overlap$gene),]
 gsa_mat_m_overlap <- gsa_mat_m_overlap[!is.na(gsa_mat_m_overlap$pathway),]
 gsa_mat_m_overlap <- gsa_mat_m_overlap[!is.na(gsa_mat_m_overlap$switch_group),]
 
-gsa_overlap <- ggplot(gsa_mat_m_overlap[gsa_mat_m_overlap$pathway %in% pathways[c(3,5,8,2,9,13,21,23,26,27)],],#[gsa_mat_m_overlap$gene %in% gsa_mat_motif_m_overlap$gene,],
+gsa_overlap <- ggplot(gsa_mat_m_overlap,
                       aes(y=gene, x=pathway)) +
     geom_tile(aes(fill = ifelse(value, overlap, 0))) + 
         scale_fill_gradient(low = "white", high = "black") +
             scale_x_discrete(
-               labels=c(
-                   "TGFB",
-                   "SMAD2_3N",
-                   "P53",
-                   "P53_DOWNSTREAM",
-                   "MAPK",
-                   "WNT",
-                   "WNT",
-                   "CYTOKINE",
-                   "FOCAL_ADHESION",
-                   "MATRISOME"
-                                      ),
+               ## labels=c(
+               ##     "AP1",
+               ##     "SMAD2_3_NUCLEAR",
+               ##     "WNT",
+               ##     "TGFB",
+               ##     "CXCR4",
+               ##     "B_CATENIN_NUCLEAR",
+               ##     "ERBB",
+               ##     "MAPK"
+               ##                        ),
                              position="top") +
     theme_bw() +
-        theme(axis.text.y = element_text(hjust = 0.5,
-                  size=10,
-                  face="bold"),
-              axis.text.x = element_text(hjust = 0, angle = 45, size=12),
+        theme(axis.text.y = element_blank()## element_text(hjust = 0.5,
+                  ## size=8,
+                  ## face="bold")
+             ,
+              axis.text.x = element_text(hjust = 0, angle = 45, size=8),
               legend.position="none",
-               plot.margin = margin(0, 1, 0.2, 0, "cm")) +
+               plot.margin = margin(0, 3, 0.2, -1, "cm")) +
                       ## facet_grid(
                       ##     scales="free",
                       ##     space="free",
@@ -295,32 +334,42 @@ gsa_overlap <- ggplot(gsa_mat_m_overlap[gsa_mat_m_overlap$pathway %in% pathways[
 ######### MKNK1 and SOCS7 expression could not be binarized
 
 
-
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/gsa_heatmap_overlap.pdf",
 width=10, height=20)
 
 l <- plot_hmap(gsa_hmap,dofacet=FALSE)#[gsa_hmap$gene %in% gsa_mat_motif_m_overlap$gene,])
-l <- l + theme( plot.margin = margin(3, 0, 0.2, 0, "cm"))
-grid.arrange(l, gsa_overlap, ncol=2)
+l <- l + theme( plot.margin = margin(4.31, 0.6, 0.2, 0, "cm"))
+step_pathways_l <- step_pathways +
+    theme(  plot.margin = margin(0, 0, 0, 0.65, "cm"))
+#grid.arrange(l, gsa_overlap, step_pathways_l, ncol=3)
+
+grid.arrange(
+  grobs = list(ggplotGrob(l),ggplotGrob(gsa_overlap),ggplotGrob(step_pathways_l)),
+    widths = c(1.5, 1),
+    heights = c(1.5,1),
+  layout_matrix = rbind(c(1, 2),
+                        c(3, NA))
+)
+
 
 dev.off()
 
 ############## GSA motif
 gsa_res_motif <- read.table("/mnt/gtklab01/ahjung/bivalent/results/GSA/sc_time_bik27_notk4_TFmotif_q0.001.csv",
-                      fill=TRUE, sep="\t" ,header=FALSE,skip=9,nrows=101)
+                      fill=TRUE, sep="\t" ,header=FALSE,skip=9,nrows=51)
 gsa_res_motif <- gsa_res_motif[-1,1:7]
 colnames(gsa_res_motif) <- c("geneset_name","genes_in_geneset","description","genes_in_overlap","k_K","pvalue","FDRqvalue")
 
 gsa_mat_motif <- read.table("/mnt/gtklab01/ahjung/bivalent/results/GSA/sc_time_bik27_notk4_TFmotif_q0.001.csv",
-                      fill=TRUE, sep="\t" ,header=TRUE,skip=114,nrows=1200, stringsAsFactors=FALSE, quote="")
+                      fill=TRUE, sep="\t" ,header=TRUE,skip=64,nrows=1200, stringsAsFactors=FALSE, quote="")
 
-motifs <- colnames(gsa_mat_motif)[unique(c(grep("MAZ", colnames(gsa_mat_motif))[1],
-                                           grep("SP1", colnames(gsa_mat_motif))[1],
-                                           grep("LEF1", colnames(gsa_mat_motif))[1],
-                                           grep("E12", colnames(gsa_mat_motif))[1],
-                                           grep("AP1", colnames(gsa_mat_motif))[1],
-                                           grep("NFAT", colnames(gsa_mat_motif))[1],
-                                           grep("NFKB", colnames(gsa_mat_motif))[1]
+motifs <- colnames(gsa_mat_motif)[c(-1,-2,-3)]#[unique(c(grep("MAZ", ## colnames(gsa_mat_motif))[1],
+                                           ## grep("SP1", colnames(gsa_mat_motif))[1],
+                                           ## grep("LEF1", colnames(gsa_mat_motif))[1],
+                                           ## grep("E12", colnames(gsa_mat_motif))[1],
+                                           ## grep("AP1", colnames(gsa_mat_motif))[1],
+                                           ## grep("NFAT", colnames(gsa_mat_motif))[1],
+                                           ## grep("NFKB", colnames(gsa_mat_motif))[1]
     ##                                        grep("SMAD4", colnames(gsa_mat_motif)),
     ##                                        grep("FOXO1", colnames(gsa_mat_motif)),
     ##                                        grep("IRF1", colnames(gsa_mat_motif)),
@@ -329,11 +378,10 @@ motifs <- colnames(gsa_mat_motif)[unique(c(grep("MAZ", colnames(gsa_mat_motif))[
     ##                                        grep("ETS2", colnames(gsa_mat_motif)),
     ##                                        grep("SRF", colnames(gsa_mat_motif))[1],
     ## grep("PITX2", colnames(gsa_mat_motif)))
-    ))]
+#    ))]
 
 
-gsa_hmap_motif <- x2[x2$gene %in% c(colnames(vit_mat)[colnames(vit_mat) %in%
-                                                      as.character(unique(gsa_mat_m_motif$Var1))]),]
+gsa_hmap_motif <- x2
 
 gsa_mat_motif_tf <- gsa_mat_motif[,motifs] != ""
 rownames(gsa_mat_motif_tf) <- gsa_mat_motif$Gene.Symbol
@@ -466,41 +514,51 @@ df_step_motif <- data.frame("step_path"=matrix(sapply(motifs,
                             "class"=matrix(sapply(motifs, function(x) rep(x, 758)), ncol=1),
                             "type"="motif")
 
+pathways <- pathways[c(1,2,3,4,6,8,10)]
 df_step <- data.frame("step_path"=matrix(sapply(pathways, function(x) get_switch_step(gsa_mat_tf,x)), ncol=1),
                       "cells"=rep(1:758,length(pathways)),
                       "class"=matrix(sapply(pathways, function(x) rep(x, 758)), ncol=1),
                       "type"="pathway")
 
-step_pathways <- ggplot(df_step[df_step$class %in% pathways[c(23,26,27)],],## c(3,5,8,2,21,9,13) rbind(df_step_motif[df_step_motif$class%in%motifs[c(4,5,6)],],
+step_pathways <- ggplot(df_step,#[df_step$class %in% pathways[c(4)],],## c(3,5,8,2,21,9,13) rbind(df_step_motif[df_step_motif$class%in%motifs[c(4,5,6)],],
                      ## df_step[df_step$class %in% pathways[c(1,2,3,6)],]),
-                     aes(x=cells, y=step_path, col=class)) +
+                     aes(x=cells, y=step_path)) +#, col=class)) +
                          geom_line(size=1.5) +
                       facet_grid(
                           scales="free",
                           space="free",
-                          cols=vars(class))+
+                          rows=vars(class))+
         theme_bw() +
             theme(panel.grid.major = element_blank(),
                   panel.grid.minor = element_blank(),
-                  legend.position = "right")
+                  legend.position = "none")
 
-step_motifs <- ggplot(df_step_motif[df_step_motif$class %in% motifs,],## c(3,5,8,2,21,9,13) rbind(df_step_motif[df_step_motif$class%in%motifs[c(4,5,6)],],
+step_motifs <- ggplot(df_step_motif[df_step_motif$class %in% motifs[c(3)],],## c(3,5,8,2,21,9,13) rbind(df_step_motif[df_step_motif$class%in%motifs[c(4,5,6)],],
                      ## df_step[df_step$class %in% pathways[c(1,2,3,6)],]),
-                     aes(x=cells, y=step_path, col=class)) +
+                     aes(x=cells, y=step_path))+#, col=class)) +
                          geom_line(size=1.5) +
                       facet_grid(
                           scales="free",
                           space="free",
-                          cols=vars(class))+
+                          rows=vars(class))+
         theme_bw() +
             theme(panel.grid.major = element_blank(),
                   panel.grid.minor = element_blank(),
-                  legend.position = "right")
+                  legend.position = "none")
+
+pdf("/mnt/gtklab01/ahjung/bivalent/figures/step_maz.pdf",
+    width=5,
+    height=10)
 
 
-grid.arrange(step_1,step_2, ncol=2)
+grid.arrange(step_pathways,
+#             step_motifs,
+#             plot_twindow("MYC"),
 
+             plot_logtpm("SMAD3"),
+             ncol=1)
 
+dev.off()
 
 ##################### fractional ON
 library(scales)
@@ -512,7 +570,7 @@ library(scales)
 plot_fraction <- function(gene) {
 
 d <- as.numeric(log_sc_time_tpm_messup_bin[gene,cellorder])
-d <- unlist(lapply(split(d, ceiling(seq_along(d)/10)),
+d <- unlist(lapply(split(d, ceiling(seq_along(d)/30)),
        function(x)
            sum(x)/length(x)))
 
@@ -573,19 +631,25 @@ return(q)
 
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_time_example.pdf",width=10, height=6)
 
-grid.arrange(plot_fraction("PITX2"),
+grid.arrange(             plot_logtpm("EOMES"),
+plot_logtpm("PITX2"),
+             plot_logtpm("PMAIP1"),
+             plot_logtpm("FOXH1"),
+
+                          plot_fraction("EOMES"),
+plot_fraction("PITX2"),
+             plot_fraction("PMAIP1"),
+             plot_fraction("FOXH1"),
+
 #             plot_fraction("LPGAT1"),
 #             plot_fraction("EOMES"),
+             plot_twindow("EOMES"),
              plot_twindow("PITX2"),
-#             plot_twindow("LPGAT1"),
-#             plot_twindow("EOMES"),
-             plot_fraction("PMAIP1"),
-#             plot_fraction("KLF10"),
-             plot_fraction("FOXH1"),
              plot_twindow("PMAIP1"),
 #             plot_twindow("KLF10"),
              plot_twindow("FOXH1"),
-             ncol=2)
+
+             ncol=4)
 
 dev.off()
 
@@ -605,14 +669,17 @@ all_motif <- all_motif[-grep("GT",all_motif)]
 all_motif <- all_motif[-grep("TG",all_motif)]
 all_motif <- all_motif[-grep("UNKNOWN",all_motif)]
 all_motif <- all_motif[-grep("Gene",all_motif)]
+all_motif <-all_motif[all_motif != "C"]
+all_motif <-all_motif[all_motif != "B"]
 
-motif_genes <- rbind(data.frame("original"=unique(all_motif[all_motif %in% rownames(log_sc_time_tpm)]),
-           "alias"=NA),
-      data.frame("original"=unique(all_motif[!all_motif %in% rownames(log_sc_time_tpm)])[c(-8,-9,-22)],
-                 "alias"=c("ELSPBP1", NA, "NFATC1", "TFAP4",NA, "FOXF2","JUN","VSX2","ESRRA",NA,"NFKB1","MYOD1", "GTF2A1", "ZEB1", "PDX1", NA, "NFYA","IRF1", "TFCP2","EBF1","MAMSTER", "CREBZF","GCM1","FOXA1","FOXA2","NFKB1","THRB", "GABPB1", "ZIC3", "NR1I2","PAXIP1","LMO2", NA, "NHLH1", "GTF3A", "FOXC1", "FOXJ1", "NFKB1", "GATA", "ELK1", "NFIL3", NA, "EREG", NA, "PATZ1")) )
 
-bimo_motif <- unique(c(as.character(motif_genes$original[motif_genes$original %in% names(bimocondition)[bimocondition]]),
-as.character(motif_genes$alias[motif_genes$alias %in% names(bimocondition)[bimocondition]])))
+motif_genes <- data.frame(
+"original"=c("MAZ","SP1","LEF1","PAX4","MYC","E4F1","ETS2","PITX2","SRF","HSF1","IRF1","FOXO3","MEIS1","FOXO1","SP3","E12","FOXO4","NFAT","AP4","FREAC2","TATA","AP1","CHX10","ERR1","NFKB","TFIIA","MMEF2","AREB6","MEF2","CP2","IRF","AMEF2","IPF1","NFY","HNF4"),
+    "alias"=c("MAZ","SP1","LEF1","PAX4","MYC","E4F1","ETS2","PITX2","SRF","HSF1","IRF1","FOXO3","MEIS1","FOXO1","SP3","TCF3","NA","NFATC1","TFAP4","FOXF2","NA","JUN","VSX2","ESRRA","NFKB1","GTF2A1","PRKAA2","ZEB1","MEF2C","TFCP2","IRF1","MEF2A","PDX1","NFYA","HNF4A"), stringsAsFactors=FALSE)
+
+
+bimo_motif_alias <- motif_genes$alias[motif_genes$alias %in% names(bimocondition)[bimocondition]]
+bimo_motif_orig <- motif_genes$original[motif_genes$alias %in% names(bimocondition)[bimocondition]]
 
 
 
@@ -653,51 +720,107 @@ grid.arrange(plot_logtpm("MAZ"),
 
 dev.off()
 
-grid.arrange(plot_logtpm("SOX9"),
-             plot_motif_targets("SOX9"), ncol=1)
+## grid.arrange(plot_logtpm("SOX9"),
+##              plot_motif_targets("SOX9"), ncol=1)
 
 
-
-bimo_motif_select <- c("ETS2","IRF1","PITX2","FOXO3","FOXO1","TFAP4","FOXF2","JUN","ESRRA","GABPB1","GCM1","GTF3A","EREG","PATZ1")
-
-bimo_motif_select <- c("IRF1","PITX2","FOXO1","FOXO3","GCM1")
-bimo_motif_select_names <- motifs[sapply(as.character(motif_genes$original)[(as.character(motif_genes[,1]) %in% bimo_motif) | (as.character(motif_genes[,2]) %in% bimo_motif)], function(x) grep(x, motifs)[1])]
-
-bimo_motif_select_names <- motifs[c(101)]
 
 pdf("/mnt/gtklab01/ahjung/bivalent/figures/bimo_motif_targets.pdf",
-    width=17, height=9)
+    width=16, height=10)
 
-grid.arrange(plot_logtpm(bimo_motif_select[1]),
-             plot_logtpm(bimo_motif_select[2]),
-             plot_logtpm(bimo_motif_select[3]),
-             plot_logtpm(bimo_motif_select[4]),
-             plot_logtpm(bimo_motif_select[5]),
-             plot_fraction(bimo_motif_select[1]),
-             plot_fraction(bimo_motif_select[2]),
-             plot_fraction(bimo_motif_select[3]),
-             plot_fraction(bimo_motif_select[4]),
-             plot_fraction(bimo_motif_select[5]),
-             plot_motif_targets(bimo_motif_select[1]),
-             plot_motif_targets(bimo_motif_select[2]),
-             plot_motif_targets(bimo_motif_select[3]),
-             plot_motif_targets(bimo_motif_select[4]),
-             plot_motif_targets(bimo_motif_select[5]),
-             ncol=5)
+grid.arrange(
+    plot_logtpm("MYC"),
+    plot_logtpm("PITX2"),
+    plot_logtpm("FOXO3"),
+    plot_logtpm("FOXO1"),
+    plot_fraction("MYC"),
+    plot_fraction("PITX2"),
+    plot_fraction("FOXO3"),
+    plot_fraction("FOXO1"),
+    plot_twindow("MYC"),
+    plot_twindow("PITX2"),
+    plot_twindow("FOXO3"),
+    plot_twindow("FOXO1"),
+    plot_motif_targets("MYC"),
+    plot_motif_targets("PITX2"),
+    plot_motif_targets("FOXO3"),
+    plot_motif_targets("FOXO1"),
+    ncol=4)
+
 
 dev.off()
 
-downstream <- unique(unlist(apply(gsa_mat_motif[,bimo_motif_select_names],2, function(x) gsa_mat_motif[,2][x!=""])))
+x <- gsa_mat_m_overlap[as.character(gsa_mat_m_overlap$pathway) %in% pathways[c(1,2,3,4,6)],]
 
-motif_downstream <- gsa_mat_motif[,2][gsa_mat_motif[,bimo_motif_select_names]!=""]
-
-downstream_bin <- log_sc_time_tpm_messup_bin[downstream,cellorder][!is.na(log_sc_time_tpm_messup_bin[downstream,cellorder][,1]),]*1
-
-## downstream_hmap <- get_hmap(unique(rownames(downstream_bin)),
-##                             log_sc_time_tpm_messup_bin, "change_window")
+downstream <-as.character(unique(x$gene[x$value]))
 
 
-pathway_downstream_l <-apply(gsa_mat_tf[,pathways[c(3,5,9,13)]],2,function(x) rownames(gsa_mat_tf)[x])
-pathway_downstream <- unique(unlist(apply(gsa_mat_tf[,pathways[c(3,5,9,13)]],2,function(x) rownames(gsa_mat_tf)[x])))
 
-downstream <- unique(c(pathway_downstream))
+downstream_motif <-as.character(unique(gsa_mat_motif_m_overlap$gene[gsa_mat_motif_m_overlap$value]))
+
+#################
+gsa_motif <- gsa_mat_motif_m_overlap
+colnames(gsa_motif)[2] <- "class"
+gsa_path <- gsa_mat_m_overlap
+colnames(gsa_path)[2] <- "class"
+gsa_total <- rbind(gsa_motif, gsa_path)
+
+sub_condition <-c(grep("_AP1_",gsa_total$class ),
+                  grep("_TGF_BETA_",gsa_total$class ))
+
+gsa_sub <- gsa_total[sub_condition,]
+gsa_sub <-gsa_sub[gsa_sub$value,]
+
+
+plot_gsa(gsa_sub)
+
+plot_gsa <- function(gsa_mat) {
+
+    g <- ggplot(gsa_mat,
+                      aes(y=gene, x=class)) +
+    geom_tile(aes(fill = ifelse(value, 1, 0))) + 
+        scale_fill_gradient(low = "white", high = "black") +
+            scale_x_discrete(
+               ## labels=c(
+               ##     "TGFB",
+               ##     "SMAD2_3N",
+               ##     "P53",
+               ##     "P53_DOWNSTREAM",
+               ##     "MAPK",
+               ##     "WNT",
+               ##     "WNT",
+               ##     "CYTOKINE",
+               ##     "FOCAL_ADHESION",
+               ##     "MATRISOME"
+               ##                        ),
+                             position="top") +
+    theme_bw() +
+        theme(axis.text.y = element_text(hjust = 0.5,
+                  size=5,
+                  face="bold"),
+              axis.text.x = element_text(hjust = 0, angle = 45, size=12),
+              legend.position="none",
+               plot.margin = margin(0, 1, 0.2, 0, "cm")) +
+                      ## facet_grid(
+                      ##     scales="free",
+                      ##     space="free",
+                      ##     rows=vars(change_window)
+                      ##     )+  
+                   ylab("") + xlab("")
+    return(g)
+
+}
+
+
+gplots::heatmap.2(hmat_bin[rownames(mim),cellorder],
+          trace="none",
+ColSideColors=cols[sc_time_coldata$exp][cellorder],
+                                        #as.numeric(a))],#cols[cl1][order(cl1)],
+          col=hmcol,
+          Colv=F,
+         Rowv=F,
+          dendrogram = "none"
+          )
+
+
+plot_hmap(hmap_hmm[hmap_hmm$gene %in% rownames(mim),],dofacet=TRUE)
