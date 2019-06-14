@@ -9,18 +9,22 @@ varinformation <- function(X,Y,method="emp") {
 }
 
 get_var <- function(mat, idx) {
-    x <- sapply(c(1:nrow(mat)),
-                function(x) varinformation(mat[idx,], mat[x,]))
+    cat(idx,"\n")
+    x <- sapply(c(idx:nrow(mat)),
+                function(x) varinformation(as.numeric(mat[idx,]),
+                                           as.numeric(mat[x,])))
+    x <-c(rep(NULL, idx-1),x)
     return(x)
 }
 
 get_mi <- function(mat, idx) {
-    x <- sapply(c(1:nrow(mat)),
-                function(x) mutinformation(mat[idx,], mat[x,]))
+    cat(idx,"\n")
+    x <- sapply(c(idx:nrow(mat)),
+                function(x) mutinformation(as.numeric(mat[idx,]),
+                                           as.numeric(mat[x,])))
+    x <-c(rep(NULL, idx-1),x)
     return(x)
 }
-
-
 
 get_connectingpair <- function(firstcluster,
                                secondcluster) {

@@ -564,16 +564,18 @@ dev.off()
 library(scales)
 
 
-
+get_fraction <- function(expmat) {
+d <- as.numeric(expmat)
+d <- unlist(lapply(split(d, ceiling(seq_along(d)/30)),
+       function(x)
+           sum(x)/length(x)))
+return(d)
+}
 
 
 plot_fraction <- function(gene) {
 
-d <- as.numeric(log_sc_time_tpm_messup_bin[gene,cellorder])
-d <- unlist(lapply(split(d, ceiling(seq_along(d)/30)),
-       function(x)
-           sum(x)/length(x)))
-
+d <- get_fraction(log_sc_time_tpm_messup_bin[gene,cellorder])
 p <- ggplot(data.frame("fractionON"=d,
                   "cwindow"=1:length(d)), aes(x=cwindow, y=fractionON, col=as.factor(cwindow))) +
                       geom_point() + geom_smooth(col="grey", se=FALSE, size=1) +

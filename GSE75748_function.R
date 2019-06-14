@@ -407,23 +407,68 @@ filter_condition <- function(res_diptest,
     return(condition)
 }
 
-findtrough <- function(densityy){
-    trough <- which(diff(sign(diff(densityy)))==2)
-    trough <- ifelse(length(trough)>1,trough[1],trough)
-    return(trough)
+
+findcutoff_fit <- function(bimofit_sub) {
+    bimofit_sub <- bimofit_sub[!is.na(bimofit_sub$gene),]
+    return(data.frame("gene"=bimofit_sub$gene,
+                      "cutoff"=abs(bimofit_sub$mu2-bimofit_sub$mu1)/2))
 }
 
-findcutoff <- function(exp) {
-    dens <- density(exp)
-    return(dens$x[findtrough(dens$y)])
+findcutoff_fit_all <- function(bimofit_s) {
+    cutoff <- findcutoff_fit(bimofit_s[1,])
+    sapply(2:nrow(bimofit_s),
+           function(x) cutoff <<- rbind(cutoff,
+                                        findcutoff_fit(bimofit_s[x,])))
+    return(cutoff)
 }
 
-binarizeexp <- function(exp) {
-    cutoff <- findcutoff(exp)
-    if (is.na(cutoff)) { return(NA) # TODO: need a warning for NA
-                     } else {
-    return(exp > cutoff) }
+binarizeexp_fit <- function(cutoff, logtpm) {
+                                        #logtpm is log_sc_time_tpm_messup[names(bimocondition)[bimocondition],]
+    return((logtpm > cutoff)*1)
 }
+
+binarizeexp_fit_all <- function(cutoff_all, logtpm_all) {
+    # make sure all(cutoff$gene == rownames(logtpm)) is true
+    x <- t(sapply(as.character(cutoff_all$gene),
+           function(x)
+               binarizeexp_fit(cutoff[cutoff$gene==x,"cutoff"],
+                               as.numeric(logtpm_all[x,]))))
+    x <- as.data.frame(x)
+    rownames(x) <- cutoff_all$gene
+    colnames(x) <- colnames(logtpm_all)
+    return(x)
+                                                        
+}
+
+get_fraction <- function(expmat) {
+d <- as.numeric(expmat)
+d <- unlist(lapply(split(d, ceiling(seq_along(d)/30)),
+       function(x)
+           sum(x)/length(x)))
+return(d)
+}
+
+
+
+## findtrough <- function(densityy){
+##     trough <- which(diff(sign(diff(densityy)))==2)
+##     trough <- ifelse(length(trough)>1,trough[1],trough)
+##     return(trough)
+## }
+
+
+
+## findcutoff <- function(exp) {
+##     dens <- density(exp)
+##     return(dens$x[findtrough(dens$y)])
+## }
+
+## binarizeexp <- function(exp) {
+##     cutoff <- findcutoff(exp)
+##     if (is.na(cutoff)) { return(NA) # TODO: need a warning for NA
+##                      } else {
+##     return(exp > cutoff) }
+## }
 
 findratio <- function(exp,idxrange) {
     binexp <- binarizeexp(exp)[idxrange]

@@ -2,6 +2,7 @@ setwd("~/projects/bivalent/modalv")
 
 source("GSE75748_data.R")
 source("GSE75748_function.R")
+source("pseudotime_function.R")
 
 sc_cell_original <- sc_cell
 sc_cell <- sc_cell[,sc_cell_coldata$cell != c("H9")]
@@ -19,164 +20,128 @@ log_sc_cell_tpm_messup_bimodal <- apply(log_sc_cell_tpm_messup, 1, test_bimodal)
 
 bimofit <- fit_bimodal_multi(log_sc_cell_tpm_messup,ncores=30)
 
-bimocondition <- filter_condition(log_sc_cell_tpm_messup_bimodal, bimofit)
+bimocondition <- filter_condition(log_sc_cell_tpm_messup_bimodal,
+                                  bimofit,
+                                  cond_dip=0.01,
+                                  cond_lambda=1,
+                                  cond_mu=1)
+bimocondition[is.na(bimocondition)] <- FALSE
 
 #sum(bimocondition,na.rm=TRUE) #2604
 
 mclass <- sc_cell_coldata_H1$cell
 nclass <- table(mclass)
 cols <- get_colors(nclass)
-## par(mfrow=c(5,10))
-## color_check(cols,sc_cell_coldata$exp)
-## color_check(cols,cl1)
-## sapply(1:49, function(x)
-##     plot_cluster(nclass, log_sc_cell_tpm[bimocondition,][x,], rownames(log_sc_cell_tpm)[bimocondition][x],
-##                  cols))
+
+bimocondition_bi <- (rownames(log_sc_cell_tpm) %in% bigenes) & bimocondition
+bimocondition_k4 <- (rownames(log_sc_cell_tpm) %in% k4genes) & bimocondition
+bimocondition_k27 <- (rownames(log_sc_cell_tpm) %in% k27genes) & bimocondition
+
+bimocondition_bi <- bimocondition_bi[!is.na(bimocondition_bi)]
+bimocondition_k4 <- bimocondition_k4[!is.na(bimocondition_k4)]
+bimocondition_k27 <- bimocondition_k27[!is.na(bimocondition_k27)]
+
+
+# binarize
+
+cutoff <- findcutoff_fit_all(bimofit[bimofit$gene %in% names(bimocondition)[bimocondition],])
+
+log_sc_cell_tpm_messup_bin <- binarizeexp_fit_all(cutoff,
+                         log_sc_cell_tpm_messup[names(bimocondition)[bimocondition],])
 
 
 ## TSNE
-set.seed(1)
+binmat <- log_sc_cell_tpm_messup_bin[!is.na(log_sc_cell_tpm_messup_bin[,1]),]
 
-bimocondition_sub <- (rownames(log_sc_cell_tpm) %in% bigenes) & bimocondition
-
-tsne_out <- Rtsne(t(unique(log_sc_cell_tpm_messup[bimocondition_sub,])),
+set.seed(100)
+tsne_out_bi <- Rtsne(t(unique(binmat[rownames(binmat) %in%names(bimocondition_bi)[bimocondition_bi],])),
                   pca=FALSE,
                   perplexity=30,
                   theta=0.0)
 
-tsne1 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],
-                    "C2"=tsne_out$Y[,2],
+tsne1_bi <- ggplot(data=data.frame("C1"=tsne_out_bi$Y[,1],
+                    "C2"=tsne_out_bi$Y[,2],
            "type"=mclass),
        aes(C1,C2,col=type)) +
-    geom_point()
+    geom_point() + theme_bw() + scale_color_manual(values=cols) + ggtitle("tSNE based on bivalent bimodal genes")
 
-rd1 <- tsne_out$Y[,1:2]
+tsne_out_k4 <- Rtsne(t(unique(binmat[rownames(binmat) %in%names(bimocondition_k4)[bimocondition_k4],])),
+                  pca=FALSE,
+                  perplexity=30,
+                  theta=0.0)
+
+tsne1_k4 <- ggplot(data=data.frame("C1"=tsne_out_k4$Y[,1],
+                    "C2"=tsne_out_k4$Y[,2],
+           "type"=mclass),
+       aes(C1,C2,col=type)) +
+    geom_point() + theme_bw() + scale_color_manual(values=cols) + ggtitle("tSNE based on H3K4me3 mono bimodal genes")
+
+
+rd1 <- tsne_out_bi$Y[,1:2]
 rownames(rd1) <- mclass
 
-cl1 <- Mclust(rd1,length(nclass))$classification
-#plot(rd1_pc, pch=16, asp = 1,col=cols[cl1])
+library(mclust)
 
-tsne2 <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
+cl1 <- Mclust(rd1,length(names(nclass)))$classification
+nclass_cluster <- table(cl1)
+
+tsne2 <- ggplot(data=data.frame("C1"=tsne_out_bi$Y[,1],
+                    "C2"=tsne_out_bi$Y[,2],
            "type"=as.factor(cl1)),
        aes(C1,C2,col=type)) +
-    geom_point()
-
-grid.arrange(tsne1,tsne2,ncol=2)
-
-## pseudocell
-
-# binarize 
-log_sc_cell_tpm_messup_bin <- t(apply(log_sc_cell_tpm_messup[bimocondition_sub,],1,binarizeexp))
-
-norm <- log_sc_cell_tpm_messup_bin#[,mclass %in% c("H1","DEC","EC")]
-
-## d <- as.dist(1 - cor(norm, method = 'sp') ^ 2)
-## PC <- prcomp(d)
-## rd1_pc <- PC$x[,1:2]
-
-## par(mfrow=c(1,2))
-## plot(rd1_pc, pch=16, asp = 1,col=cols[mclass])
-
-#scatterplot3d(PC$x[,1],PC$x[,2],PC$x[,3],color=cols[sc_cell_coldata$exp])
+    geom_point() + theme_bw() + scale_color_manual(values=cols) + ggtitle("6 clusters generated")
 
 
-# MST
-my.mst <- mstree(dist(rd1),1)
-mygraph <- graph_from_adjacency_matrix(neig2mat(my.mst))
-a <- shortest.paths(mygraph, 1) # starting from any cell from cell 0
-a2 <- get.shortest.paths(mygraph,1) # need to keep the option to specify end point
-
-## using igraph
-longest <- which(unlist(lapply(a2$vpath,length))==max(unlist(lapply(a2$vpath,length))))
-
-V(mygraph)$color <- cols[cl1]
-E(mygraph, path=a2$vpath[[longest]])$color <- "red"
-V(mygraph)[as.numeric(a2$vpath[[longest]])]$color <- "black"
-
-plot(mygraph,
-     vertex.size=2,
-     layout=rd1,
-     vertex.label=NA,
-     edge.arrow.size=0.5)
-
-## s.label(rd1_pc, clab = 0, cpoi = 1, neig = my.mst, cnei = 1)#, label = cols[sc_cell_coldata_H1$cell])
-
-## points(rd1_pc, col = cols[mclass], pch=16, asp = 1, cex=0.5)
-## points(rd1_pc, col = cols[cl1], pch=16, asp = 1, cex=0.5)
-
-# finding shortest path to order cells
+pdf("/mnt/gtklab01/ahjung/bivalent/figures/sc_cell_tsne.pdf",
+    width=10, height=10)
+grid.arrange(tsne1_bi,tsne1_k4,tsne2,ncol=2)
+dev.off()
 
 
+## ratio_per_cell <- function(nclass, exp) {
+##     cstart <- c(1,rev(rev(cumsum(nclass)+1)[-1]))
+##     cend <- cumsum(nclass)
+##     ci <- sum(exp[cstart[1]:cend[1]])/nclass[1]
+##     for (i in 2:length(nclass)) {
+##         ci <- c(ci, sum(exp[cstart[i]:cend[i]])/nclass[i])
+##     }
+##     return(ci)
+## }
 
 
-p1 <- ggplot(data.frame("x"=1:ncol(norm),"y"=rep(1,ncol(norm)),"group"=mclass[order(as.numeric(a))]),
-            aes(x=x, y=y, fill=group)) +
-  geom_bar(stat="identity")+theme_minimal() + scale_fill_manual(values=cols)
+## bn <- function(i, wsize) {
+##     windowratio(ordered_cell[i,],table(as.numeric(cl1)),wsize)[,"ON"]    
+## }
 
-p2 <- ggplot(data.frame("x"=1:ncol(norm),"y"=rep(1,ncol(norm)),"group"=as.factor(cl1[order(as.numeric(a))])),
-            aes(x=x, y=y, fill=group)) +
-  geom_bar(stat="identity")+theme_minimal() + scale_fill_manual(values=cols)
+hmat_bin <- log_sc_cell_tpm_messup_bin[names(bimocondition_bi)[bimocondition_bi],]
 
-grid.arrange(p1,p2,ncol=1)
+mim_gene_var <- sapply(1:nrow(hmat_bin),
+                   function(x) get_var(hmat_bin, x))
+colnames(mim_gene_var) <- rownames(hmat_bin)
+rownames(mim_gene_var) <- rownames(hmat_bin)
 
-# heatmap of cells ordered according to shortest path (pseudocell)
+mim_gene_var <- mim_gene_var[!is.na(mim_gene_var[1,]),!is.na(mim_gene_var[1,])]
 
-hmcol <- colorRampPalette(brewer.pal(9, "BuPu"))(20)
-#hmcol <- colorRampPalette(brewer.pal(9, "YlGnBu"))(20)
-heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
-                 nrow=nrow(norm))[,order(cl1)],#[,order(as.numeric(a))], #rownames(sc_cell_messup) %in% bigenes
-          trace="none",
-          ColSideColors=cols[cl1][order(cl1)],#[order(as.numeric(a))],
-          distfun = function(x)
-              as.dist(1 - cor(t(x), method = 'sp') ^ 2),
-          col=hmcol,
-          Colv=F,
-#          Rowv=F,
-          dendrogram = "none"
-          )
-
-norder <- order(as.numeric(cl1))  # order(as.numeric(a))
-
-norm_bin <- (norm*1)[,norder]
-ordered_cell <- matrix(as.numeric(log_sc_cell_tpm_messup[bimocondition_sub,]),
-                       nrow=nrow(norm))[,norder]
-rownames(ordered_cell) <- rownames(log_sc_cell_tpm[bimocondition_sub,])
-nclass <- table(cl1[norder])
-
-## ordered_cell_ratio <- t(sapply(1:nrow(ordered_cell),
-##                                function(i)
-##                                    clusterratio(ordered_cell[i,],nclass)[,"ON"]))
-
-bn <- function(i, wsize) {
-windowratio(ordered_cell[i,],table(as.numeric(cl1)),wsize)[,"ON"]    
-}
-
-wsize <- 30
-ordered_cell_ratio_wd <- t(sapply(1:nrow(ordered_cell),
-                                  function(x) bn(x, wsize)))
-
-
-## hr <- hclust(as.dist(1-cor(t(ordered_cell_ratio), method="pearson")),
-##              method="complete")
-
-hr <- hclust(dist(ordered_cell_ratio_wd))
+hr <-hclust(as.dist(mim_gene_var))
+#hr <- hclust(dist(ordered_cell))
 ## hr <- hclust(dist(muin_bin, method="euclidean"),method="ward.D2")
+hmcol <- colorRampPalette(brewer.pal(9, "BuPu"))(20)
 
-heatmap.2(ordered_cell_ratio_wd[hr$order,],
+heatmap.2(as.matrix(hmat_bin[rownames(mim_gene_var),order(cl1)][hr$order,]),
           trace="none",
 #ColSideColors=cols[as.numeric(sc_cell_coldata$exp)][order(as.numeric(a))],
 #          distfun = function(x) as.dist(1 - cor(t(x), method = 'sp') ^ 2),
           col=hmcol,
           ## dist=dist,
           ## hclust=hclust,
-          ColSideColors=cols[bin_clusters(nclass,wsize)],
+#          ColSideColors=cols[bin_clusters(nclass,29)],
           Colv=FALSE,
           Rowv=FALSE,
           dendrogram = "none"
 #          RowSideColors=as.character(cl_ratio[order(cl_ratio)]),
           )
 
-heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_sub,]),
+heatmap.2(matrix(as.numeric(log_sc_cell_tpm[bimocondition_bi,]),
                  nrow=nrow(norm))[hr$order,order(cl1)],#[,order(as.numeric(a))], #rownames(sc_cell_messup) %in% bigenes
           trace="none",
           ColSideColors=cols[cl1][order(cl1)],#[order(as.numeric(a))],
@@ -311,12 +276,12 @@ points(m_mean, m_cv, col="red") }
 
 # comparing variance
 par(mfrow=c(1,2))
-plot_cv(log_sc_time_tpm, TRUE, TRUE)
+plot_cv(log_sc_cell_tpm, TRUE, TRUE)
 plot_cv(ordered_cell, TRUE, FALSE)
 
-plot_cv(log_sc_time_tpm[vargenes,],TRUE,FALSE)
+plot_cv(log_sc_cell_tpm[vargenes,],TRUE,FALSE)
 
-m_cv <- get_cv(log_sc_time_tpm,TRUE)
+m_cv <- get_cv(log_sc_cell_tpm,TRUE)
 vargenes <- names(m_cv)[order(m_cv,decreasing=TRUE)][1:length(bimogenes)]
 
 
@@ -329,7 +294,7 @@ vargenes <- names(m_cv)[order(m_cv,decreasing=TRUE)][1:length(bimogenes)]
 
 log_sc_cell_tpm_bi <- log_sc_cell_tpm[rownames(log_sc_cell_tpm) %in% bigenes,]
 
-tsne_out <- Rtsne(t(unique(log_sc_time_tpm[bimogenes[bimogenes %in% bigenes],])),
+tsne_out <- Rtsne(t(unique(log_sc_cell_tpm[bimogenes[bimogenes %in% bigenes],])),
                   pca=FALSE,
                   perplexity=30,
                   theta=0.0)
@@ -341,7 +306,7 @@ tsne_bimo <- ggplot(data=data.frame("C1"=tsne_out$Y[,1],"C2"=tsne_out$Y[,2],
        aes(C1,C2,col=type)) +
     geom_point()
 
-grid.arrange(tsne_vr, tsne_bimo,ncol=2)
+
 
 cl_cell <- Mclust(rd1_cell,2)$classification
 
@@ -363,7 +328,7 @@ heatmap.2(log_sc_cell_tpm[vargenes,],
 
 bimo_mixmdl <- get_mixmdl(log_sc_cell_tpm_messup[bimocondition,])
 
-bimo_bin <- binarizeexp(log_sc_cell_tpm[bimocondition,])
+bimo_bin <- binarizeexp(log_sc_cell_tpm[bimocondition,)]
 
 par(mfrow=c(1,4))
 
@@ -396,3 +361,76 @@ bootstrap_num <- bootstrap_opti(log_sc_cell_tpm, mysd, 100, 20)
 
 table(bootstrap_num)
 
+
+
+
+
+###########3
+
+
+plot_cdensity <- function(gene, nclass) {
+
+d1 <- as.numeric(log_sc_cell_tpm[gene,])
+df <- data.frame("logTPM"=d1,
+"cwindow"=nclass)
+
+q <- ggplot(df, aes(logTPM,
+                    col=as.factor(cwindow),
+                    fill=as.factor(cwindow))) +
+                        geom_density(size=1) +
+                            facet_grid(rows=vars(cwindow),
+                                       scales="free") +
+                                ylim(0,1) + xlim(-2,10) +
+                                    theme_classic() +
+                                        theme(strip.background = element_blank(),
+#              strip.text.y = element_blank(),
+legend.position="none") + ggtitle(gene) +
+    scale_color_manual(values=cols) +
+        scale_fill_manual(values=cols) + xlab("log(TPM+1)") ## + coord_flip() 
+
+return(q)
+
+}
+
+plot_density <- function(gene, nclass) {
+
+d1 <- as.numeric(log_sc_cell_tpm[gene,])
+df <- data.frame("logTPM"=d1,
+"cwindow"=nclass)
+
+q <- ggplot(df, aes(logTPM)) +
+                        geom_density(size=1) +
+#                            facet_grid(rows=vars(cwindow)) +
+xlim(-2,10) +
+                                    theme_classic() +
+                                        theme(strip.background = element_blank(),
+#              strip.text.y = element_blank(),
+legend.position="none",
+                                              plot.margin = margin(0.5, 1, 0, 0.4, "cm")) + ggtitle(gene) +
+    scale_color_manual(values=cols) +
+        scale_fill_manual(values=cols) + xlab("log(TPM+1)")
+## + coord_flip() 
+
+return(q)
+
+}
+
+
+
+grid.arrange(
+    grobs = list(ggplotGrob(plot_density("RND3",nclass)),
+ggplotGrob(plot_cdensity("RND3",nclass)),
+                 ggplotGrob(plot_density("SOX2",nclass)),
+ggplotGrob(plot_cdensity("SOX2",nclass))),
+    heights = c(1,5),
+  layout_matrix = rbind(c(1,3),
+                        c(2,4))
+)
+
+
+
+
+plot_cdensity("SOX2",nclass),
+plot_cdensity("COL12A1",nclass),
+plot_cdensity("LRP2",nclass),
+ncol=4)
