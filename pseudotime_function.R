@@ -13,7 +13,7 @@ get_var <- function(mat, idx) {
     x <- sapply(c(idx:nrow(mat)),
                 function(x) varinformation(as.numeric(mat[idx,]),
                                            as.numeric(mat[x,])))
-    x <-c(rep(NULL, idx-1),x)
+    x <-c(rep(NA, idx-1),x)
     return(x)
 }
 
@@ -22,7 +22,7 @@ get_mi <- function(mat, idx) {
     x <- sapply(c(idx:nrow(mat)),
                 function(x) mutinformation(as.numeric(mat[idx,]),
                                            as.numeric(mat[x,])))
-    x <-c(rep(NULL, idx-1),x)
+    x <-c(rep(NA, idx-1),x)
     return(x)
 }
 
@@ -214,11 +214,6 @@ find_switch <- function(genex, onoroff) {
     return(ifelse(onoroff=="ON", data.frame("ON"=switch_on), data.frame("OFF"=switch_off)))
 }
 
-on_switches <- sapply(colnames(vit_mat_path),
-                      function(x) find_switch(x, "ON"))
-
-off_switches <- sapply(colnames(vit_mat_path),
-                      function(x) find_switch(x, "OFF"))
 
 filter_genes <- function(df) {
     start_bin <- as.logical(df[1])
