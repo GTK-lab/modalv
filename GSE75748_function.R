@@ -470,9 +470,9 @@ return(d)
 ##     return(exp > cutoff) }
 ## }
 
-findratio <- function(exp,idxrange) {
-    binexp <- binarizeexp(exp)[idxrange]
-    binexp <- binexp[!is.na(binexp)]
+findratio <- function(binexp,idxrange) {
+#    binexp <- binarizeexp(exp)[idxrange]
+#    binexp <- binexp[!is.na(binexp)]
     if (all(binexp)) { # all ON
         return(c(0,1))
     } else if (all(!binexp)) { # all OFF
@@ -483,17 +483,54 @@ findratio <- function(exp,idxrange) {
 }
 
 clusterratio <- function(exp, nclass) {
-    l <- length(nclass)
-    c <- cumsum(nclass)
 
-    cstart <- c(1,rev(rev(c)[-1])+1)
-    cend <- c
+return(unlist(lapply(split(as.numeric(exp),nclass),function(x) sum(x==1)/length(x))))
 
-    cratio <- t(sapply(1:l, function(x) findratio(exp, cstart[x]:cend[x])))
-    rownames(cratio) <- names(nclass)
-    colnames(cratio) <- c("OFF","ON")
-    return(cratio)
 }
+
+clusteronoff <- function(exp,nclass) {
+    return(data.frame("OFF"=unlist(lapply(split(as.numeric(exp),nclass),function(x) sum(x==0))),
+               "ON"=    unlist(lapply(split(as.numeric(exp),nclass),function(x) sum(x==1)))))
+
+}
+
+
+## clusterratio <- function(exp, nclass) {
+##     l <- length(nclass)
+##     c <- cumsum(nclass)
+
+##     cstart <- c(1,rev(rev(c)[-1])+1)
+##     cend <- c
+
+##     cratio <- t(sapply(1:l, function(x) findratio(exp, cstart[x]:cend[x])))
+##     rownames(cratio) <- names(nclass)
+##     colnames(cratio) <- c("OFF","ON")
+##     return(cratio)
+## }
+
+split_cluster <- function(mclass, exp, wsize=30) {
+
+w <- as.numeric(unlist(lapply(lapply(split(exp, mclass), function(d) split(d, ceiling(seq_along(d)/wsize))), function(x) lapply(x,length))))
+w <- rep(1:length(w),w)
+
+df <- data.frame("exp"=exp,
+"cluster"=mclass,
+           "window"=w)
+
+return(df)
+}
+
+split_cluster_fraction <- function(mclass, exp, wsize=30) {
+
+df <- split_cluster(mclass, exp, wsize)
+df2 <- aggregate(exp~window, data=df, FUN=function(x) sum(x==1)/length(x))
+
+return(df2$exp)
+
+}
+
+
+
 
 window_per_cluster <- function(csize, wsize, cinit) {
     # csize: size of cluster, wsize: size of window
@@ -513,11 +550,23 @@ window_all_clusters <- function(nclass, wsize) {
            return(clusterw)
 }
 
-bin_clusters <- function(nclass,wsize) {
-    clusterw <- window_all_clusters(nclass,wsize)
-    b <- rep(1:length(nclass),
-             diff(c(0,which(sapply(clusterw$cend, function(x) x %in% cumsum(nclass))))))
-    return(b)
+## bin_clusters <- function(nclass,wsize) {
+##     clusterw <- window_all_clusters(nclass,wsize)
+##     b <- rep(1:length(nclass),
+##              diff(c(0,which(sapply(clusterw$cend, function(x) x %in% cumsum(nclass))))))
+##     return(b)
+## }
+
+bin_clusters <- function(cols,mclass,wsize=30){
+df <- split_cluster(mclass, 1:length(mclass), wsize)
+return(cols[as.numeric(aggregate(cluster~window, data=df, FUN=unique)$cluster)])
+    ## x <- unlist(lapply(split(nclass,
+    ##                     ceiling(seq_along(nclass)/wsize)),
+    ##               function(x)
+    ##                   ifelse(length(unique(x))>1,
+    ##                          max(nclass)+1,
+    ##                          unique(x))))
+    ## return(c(cols,"grey")[x])
 }
 
 find_windowratio <- function(exp, clusterw) {
@@ -525,7 +574,9 @@ find_windowratio <- function(exp, clusterw) {
     ## cend <- c(cstart[-1]-1,length(exp))
     cstart <- clusterw$cstart
     cend <- clusterw$cend
-    cratio <- t(sapply(1:nrow(clusterw), function(x) findratio(exp, cstart[x]:cend[x])))
+    cratio <- t(sapply(1:nrow(clusterw),
+                       function(x)
+                           findratio(exp, cstart[x]:cend[x])))
     rownames(cratio) <- 1:nrow(clusterw)
     colnames(cratio) <- c("OFF","ON")
     return(cratio)
