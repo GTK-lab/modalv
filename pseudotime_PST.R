@@ -6,6 +6,23 @@ source("GSE75748_data.R")
 source("GSE75748_function.R")
 source("pseudotime_function.R")
 
+load("files/scnorm_sctime.RData")
+
+log_sc_time_norm <- log(normdata+1)
+log_sc_time_norm_messup <- messup(log_sc_time_norm, 1e-05)
+log_sc_time_norm_messup_bimodal <- apply(log_sc_time_norm_messup, 1, test_bimodal)
+
+set.seed(100)
+bimofit_norm <- fit_bimodal_multi(log_sc_time_norm_messup,ncores=30)
+
+bimocondition_norm <- filter_condition(log_sc_time_norm_messup_bimodal,
+                                  bimofit_norm,
+                                  cond_dip=0.01,
+                                  cond_lambda=1,
+                                  cond_mu=1)
+bimocondition_norm[is.na(bimocondition_norm)] <- FALSE
+
+
 ## sc_time_original <- sc_time
 ## sc_time <- sc_time[!apply(sc_time,1,sum)==0,]
 
@@ -401,8 +418,24 @@ gwhen$gene <- as.character(gwhen$gene)
 gwhen <- unique(gwhen)
 
 change_genes <- find_change_genes(1)
-gwhen <- merge(gwhen, change_genes)
+gwhen <- merge(gwhen, change_genes,all=TRUE)
 
+gwhen$startbin[gwhen$switch_group %in% gene_switches_df_table[gene_switches_df_table$start_bin==FALSE,"switch_group"]] <- 1
+
+gwhen$startbin[gwhen$switch_group %in% gene_switches_df_table[gene_switches_df_table$start_bin==TRUE,"switch_group"]] <- 2
+
+gwhen$startbin_order <- gwhen$switch_group_order
+
+save(on_switches,
+     off_switches,
+     gene_switches_df,
+     gene_switches_df_table,
+     switches_genes,
+     gene_change_df_table,
+     gwhen,
+     file = "files/switches.RData")
+
+#load("files/switches.RData")
 ################# DESEQ
 ## library(DESeq2)
 ## dds <- DESeqDataSetFromMatrix(round(bulk_time), bulk_time_coldata, design=~ idx + exp)

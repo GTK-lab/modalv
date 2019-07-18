@@ -267,7 +267,9 @@ order_by_cluster <- function(switches_df_idx) {
     sgenes <- switches_genes[[switches_df_idx]]
 
     gswhen <- as.numeric(unlist(lapply(on_switches[switches_genes[[switches_df_idx]]],
-                                       function(x) ifelse(x[1]> table(cl1)[1], x[1], x[2]))))
+                                       function(x) ifelse((length(x)==1)|(x[1]> table(cl1)[1]),
+                                                          x[1],
+                                                          x[2]))))
 
     if (!length(sgenes) < 2) {
         colgenes <- gsub("-","[.]",colnames(vit_mat))
@@ -323,14 +325,22 @@ get_hmap <- function(genes, binmat, whichorder, bulk=FALSE) {
         genes <- gsub("[.]","-",genes)
     }
 
+    if (class(binmat)!="matrix") {
+        binmat <- as.matrix(binmat)
+    }
+
     hmap <- melt(binmat[genes,])
     colnames(hmap) <- c("gene","when_cell_all","value")
 
     gwhen_sub <- gwhen[gwhen$gene %in% genes,]
 
-    if (whichorder == "switch_group") {
+    if (whichorder == "startbin") {
+        whichorder2 <- "switch_group"
+    } else { whichorder2 <- whichorder}
+
+    if (whichorder2 == "switch_group") {
         gwhen_sub <- gwhen_sub[,c("gene","when","when_cell","switch_group","switch_group_order")]
-    } else if (whichorder == "change_window") {
+    } else if (whichorder2 == "change_window") {
         gwhen_sub <- gwhen_sub[,c("gene","when","when_cell","change_window","change_window_order")]
     }
 
@@ -341,11 +351,14 @@ hmap_merge <- merge(hmap, gwhen_sub, all=T, by=c("gene"))
 hmap_merge$when_cell_all <- factor(hmap_merge$when_cell_all,
                                        levels=colnames(log_sc_time_tpm)[cellorder])
 }
-
-
     hmap_res <- hmap_merge[!is.na(hmap_merge$gorder),]
     hmap_res$gene <- factor(hmap_res$gene,
                          levels=gwhen_sub$gene[order(gwhen_sub$gorder, gwhen_sub$gorder_order)])
+
+
+ if (whichorder == "startbin") {
+     hmap_res$gorder[hmap_res$gorder %in% gene_switches_df_table[gene_switches_df_table$start_bin==FALSE,"switch_group"]] <- 1
+     hmap_res$gorder[hmap_res$gorder %in% gene_switches_df_table[gene_switches_df_table$start_bin==TRUE,"switch_group"]] <- 2  }
 
     return(hmap_res)
 }
